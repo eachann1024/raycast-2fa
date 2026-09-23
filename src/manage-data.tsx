@@ -203,28 +203,24 @@ export default function ManageData() {
       <List.Section title="导入导出">
         <List.Item
           icon={Icon.Download}
-          title="从剪贴板导入"
-          subtitle="支持 otpauth://、Google 迁移码与 goose-2fa JSON 备份"
+          title={t("Import from Clipboard", "从剪贴板导入")}
+          subtitle={t("Supports otpauth://, Google migration codes and goose-2fa JSON backups", "支持 otpauth://、Google 迁移码与 goose-2fa JSON 备份")}
           actions={
             <ActionPanel>
               <Action
-                title="从剪贴板导入"
+                title={t("Import from Clipboard", "从剪贴板导入")}
                 icon={Icon.Download}
                 onAction={async () => {
                   const text = await Clipboard.readText();
                   if (!text) {
-                    await showToast({ style: Toast.Style.Failure, title: "剪贴板没有文本" });
+                    await showToast({ style: Toast.Style.Failure, title: t("Clipboard contains no text", "剪贴板没有文本") });
                     return;
                   }
-                  const preview = previewImport(text, getVaultState());
-                  if (!preview) {
-                    await showToast({ style: Toast.Style.Failure, title: "无法解析剪贴板内容" });
+                  if (!previewImport(text, getVaultState())) {
+                    await showToast({ style: Toast.Style.Failure, title: t("Could not parse clipboard content", "无法解析剪贴板内容") });
                     return;
                   }
-                  await commit(
-                    (snapshot) => previewImport(text, snapshot)?.snapshot ?? snapshot,
-                    `已导入 ${preview.added} 个账户${preview.dupeCount ? `，跳过 ${preview.dupeCount} 个重复` : ""}`,
-                  );
+                  push(<ImportPreview text={text} />);
                 }}
               />
             </ActionPanel>
@@ -433,33 +429,67 @@ function GroupForm({ mode, group }: { mode: "create" | "rename"; group?: VaultGr
 }
 
 function ImportForm() {
-  const { pop } = useNavigation();
+  const { push } = useNavigation();
   return (
     <Form
-      navigationTitle="从文件导入"
+      navigationTitle={t("Import from File", "从文件导入")}
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title="导入"
+            title={t("Import", "导入")}
             onSubmit={async (values: FormValues) => {
               const target = normalizePath(values.path ?? "");
               if (!target) return;
               let text: string;
               try {
+                if (statSync(target).size > 5 * 1024 * 1024) throw new Error(t("Backup exceeds 5 MB", "备份文件超过 5MB"));
                 text = readFileSync(target, "utf8");
               } catch {
-                await showToast({ style: Toast.Style.Failure, title: "无法读取文件", message: target });
+                await showToast({ style: Toast.Style.Failure, title: t("Could Not Read File", "无法读取文件"), message: t("Check the path, permissions and 5 MB limit.", "请检查文件路径、权限和 5MB 大小限制。") });
                 return;
               }
-              const ok = await commit((snapshot) => previewImport(text, snapshot)?.snapshot ?? snapshot, "导入完成");
-              if (ok) pop();
+              if (!previewImport(text, getVaultState())) {
+                await showToast({ style: Toast.Style.Failure, title: t("Could not parse backup file", "无法解析备份文件") });
+                return;
+              }
+              push(<ImportPreview text={text} />);
             }}
           />
         </ActionPanel>
       }
     >
-      <Form.TextField id="path" title="备份文件路径" placeholder="~/Downloads/goose-2fa-backup.json" />
+      <Form.TextField id="path" title={t("Backup File Path", "备份文件路径")} placeholder="~/Downloads/goose-2fa-backup.json" />
     </Form>
+  );
+}
+
+function ImportPreview({ text }: { text: string }) {
+  const { pop } = useNavigation();
+  const preview = previewImport(text, getVaultState());
+  if (!preview) return <List.EmptyView title={t("Could Not Parse Backup", "备份无法解析")} />;
+  const current = getVaultState();
+  const imported = preview.snapshot.accounts.slice(current.accounts.length);
+  const groupCount = preview.snapshot.groups.length - current.groups.length;
+  return (
+    <List navigationTitle={t("Import Preview", "导入预览")} searchBarPlaceholder={t("Search accounts to import", "搜索待导入账户")}>
+      <List.Section title={t(`Accounts: ${preview.added} new, ${preview.dupeCount} duplicates skipped`, `账户：新增 ${preview.added}，重复跳过 ${preview.dupeCount}`)}>
+        {imported.map((account: NewAccountInput, index) => (
+          <List.Item key={`${account.issuer}:${account.name}:${index}`} icon={Icon.Key} title={account.note || account.name} subtitle={account.issuer} />
+        ))}
+      </List.Section>
+      <List.Section title={t(`${groupCount} groups will be added`, `将新增 ${groupCount} 个分组`)}>
+        {preview.snapshot.groups.slice(current.groups.length).map((group) => <List.Item key={group.id} icon={Icon.Folder} title={group.name} />)}
+      </List.Section>
+      <List.Item
+        icon={Icon.Warning}
+        title={t("Confirm Import", "确认导入")}
+        subtitle={t("Secrets are hidden; they will be available in your local data source after import.", "验证码密钥不会显示；导入后可在本机数据源中查看。")}
+        actions={<ActionPanel><Action title={t(`Import ${preview.added} accounts`, `导入 ${preview.added} 个账户`)} icon={Icon.Download} onAction={async () => {
+          const ok = await commit((snapshot) => previewImport(text, snapshot)?.snapshot ?? snapshot, t(`Imported ${preview.added} accounts`, `已导入 ${preview.added} 个账户`));
+          if (ok) pop();
+        }} /></ActionPanel>}
+      />
+    </List>
   );
 }
 
