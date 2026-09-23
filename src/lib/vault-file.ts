@@ -36,6 +36,11 @@ export function normalizePath(input: string): string {
   return normalizeSyncPath(input, homedir());
 }
 
+/** 本地敏感备份只新建 0600 文件；路径已存在时拒绝覆盖。 */
+export function writeBackupFile(filePath: string, content: string): void {
+  writeFileSync(filePath, content, { flag: "wx", mode: 0o600 });
+}
+
 /**
  * 数据源文件路径必须解析到真实文件/真实父目录：同一文件经符号链接别名访问时，
  * 不解析就会出现 `/tmp/x.json` 与 `/private/tmp/x.json` 两把锁、两个写入端。

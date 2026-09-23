@@ -11,6 +11,7 @@ import {
   readVaultFile,
   readVaultLock,
   resolveVaultPath,
+  writeBackupFile,
   writeVaultFile,
 } from "../src/lib/vault-file";
 
@@ -29,6 +30,13 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
+});
+
+test("敏感备份以 0600 新建且拒绝覆盖已有文件", () => {
+  writeBackupFile(target, "first");
+  expect(statSync(target).mode & 0o777).toBe(0o600);
+  expect(() => writeBackupFile(target, "second")).toThrow();
+  expect(readFileSync(target, "utf8")).toBe("first");
 });
 
 describe("数据源文件读写（与 uTools 端同一把锁）", () => {
