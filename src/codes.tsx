@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, LaunchType, List, Toast, launchCommand, showToast } from "@raycast/api";
+import { Action, ActionPanel, Icon, List, Toast, showToast } from "@raycast/api";
 import { useEffect, useMemo, useState } from "react";
 import type { LaunchProps } from "@raycast/api";
 import { buildGroupTallies, filterByGroup, UNGROUPED_KEY } from "../vendor/lib/groups";
@@ -10,6 +10,7 @@ import { deliverCode } from "./lib/deliver";
 import { useOtpCodes } from "./lib/use-otp";
 import { moveToTrash } from "./lib/vault-ops";
 import { clearSyncLock, refreshVault, useVault } from "./lib/vault-store";
+import ManageData from "./manage-data";
 
 const ALL_GROUPS = "__all__";
 
@@ -82,11 +83,7 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
                     }}
                   />
                 )}
-                <Action
-                  title="打开账户与数据"
-                  icon={Icon.Gear}
-                  onAction={() => void launchCommand({ name: "manage-data", type: LaunchType.UserInitiated })}
-                />
+                <Action.Push title="打开账户与数据" icon={Icon.Gear} target={<ManageData />} />
               </ActionPanel>
             }
           />
@@ -116,11 +113,7 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
           actions={
             <ActionPanel>
               <Action title="重新读取数据源文件" icon={Icon.ArrowClockwise} onAction={() => void refreshVault()} />
-              <Action
-                title="打开账户与数据"
-                icon={Icon.Gear}
-                onAction={() => void launchCommand({ name: "manage-data", type: LaunchType.UserInitiated })}
-              />
+              <Action.Push title="打开账户与数据" icon={Icon.Gear} target={<ManageData />} />
             </ActionPanel>
           }
         />
@@ -179,11 +172,7 @@ function CodeItem({
               style={Action.Style.Destructive}
               onAction={() => void commit((snapshot) => moveToTrash(snapshot, account.id), "已移入回收站")}
             />
-            <Action
-              title="打开账户与数据"
-              icon={Icon.Gear}
-              onAction={() => void launchCommand({ name: "manage-data", type: LaunchType.UserInitiated })}
-            />
+            <Action.Push title="打开账户与数据" icon={Icon.Gear} target={<ManageData />} />
           </ActionPanel.Section>
         </ActionPanel>
       }

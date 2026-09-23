@@ -200,7 +200,13 @@ export default function ManageData() {
         ))}
       </List.Section>
 
-      <List.Section title="导入导出">
+      <List.Section title={t("Import & Export", "导入导出")}>
+        <List.Item
+          icon={Icon.Camera}
+          title={t("Scan Screenshot", "截图识码")}
+          subtitle={t("Capture and scan QR or migration codes", "截屏识别二维码或迁移码")}
+          actions={<ActionPanel><Action.Push title={t("Scan Screenshot", "截图识码")} icon={Icon.Camera} target={<ScanQr />} /></ActionPanel>}
+        />
         <List.Item
           icon={Icon.Download}
           title={t("Import from Clipboard", "从剪贴板导入")}

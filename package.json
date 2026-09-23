@@ -37,35 +37,6 @@
           "required": false
         }
       ]
-    },
-    {
-      "name": "manage-data",
-      "title": "账户与数据",
-      "subtitle": "Goose 2FA",
-      "description": "账户、分组、回收站、导入导出与数据源文件状态",
-      "mode": "view",
-      "keywords": [
-        "账户",
-        "分组",
-        "回收站",
-        "导入",
-        "导出",
-        "数据源"
-      ]
-    },
-    {
-      "name": "scan-qr",
-      "title": "截图识码",
-      "subtitle": "Goose 2FA",
-      "description": "截屏识别二维码或迁移码并导入账户",
-      "mode": "view",
-      "keywords": [
-        "扫码",
-        "截图",
-        "qr",
-        "二维码",
-        "迁移"
-      ]
     }
   ],
   "preferences": [
