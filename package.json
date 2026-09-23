@@ -75,6 +75,23 @@
       "description": "指定 JSON 文件后即以它为准（与 uTools 端同一个文件，保存也回写它）。留空则该端只用本地库。",
       "type": "file",
       "required": false
+    },
+    {
+      "name": "language",
+      "title": "Language",
+      "type": "dropdown",
+      "required": false,
+      "default": "en",
+      "data": [
+        {
+          "title": "English",
+          "value": "en"
+        },
+        {
+          "title": "Simplified Chinese",
+          "value": "zh-Hans"
+        }
+      ]
     }
   ],
   "scripts": {
