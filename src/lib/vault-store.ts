@@ -1,5 +1,6 @@
 import { t } from "./i18n";
-import { getPreferenceValues } from "@raycast/api";
+import { getPreferenceValues, LocalStorage } from "@raycast/api";
+import path from "node:path";
 import { useEffect, useState } from "react";
 import { exportAsSyncJson, type SyncSnapshot } from "../../vendor/lib/data-transfer";
 import type { AccountData, VaultGroup } from "../../vendor/lib/types";
@@ -11,7 +12,7 @@ import {
   type SyncLockInfo,
 } from "../../vendor/shared/sync-protocol";
 import { readLocalVault, writeLocalVault } from "./local-vault";
-import { clearVaultLock, readVaultFile, resolveVaultPath, writeVaultFile, type VaultFileRead } from "./vault-file";
+import { clearVaultLock, normalizePath, readVaultFile, resolveVaultPath, writeVaultFile, type VaultFileRead } from "./vault-file";
 import { mergeExternalSnapshot } from "./vault-ops";
 
 export type VaultSyncStatus = "idle" | "loading" | "writing" | "success" | "error" | "conflict";
@@ -20,6 +21,20 @@ export interface VaultConflict {
   snapshot: SyncSnapshot;
   content: string;
   stat: SyncFileStat;
+}
+
+const SOURCE_OVERRIDE_KEY = "goose-2fa-data-source-override";
+
+/** 界面新建文件时保存路径；用户后来修改扩展文件偏好时让新偏好优先。 */
+export async function selectCreatedSource(filePath: string): Promise<void> {
+  const preference = getPreferenceValues<Preferences>().dataFile || "";
+  await LocalStorage.setItem(SOURCE_OVERRIDE_KEY, JSON.stringify({ filePath, preference }));
+  await loadVault();
+}
+
+export async function clearCreatedSource(): Promise<void> {
+  await LocalStorage.removeItem(SOURCE_OVERRIDE_KEY);
+  await loadVault();
 }
 
 export interface VaultState {
@@ -104,7 +119,16 @@ function useVaultSnapshot(): VaultState {
 /** 读取数据源文件并以它为准；未配置路径时使用 Raycast 本地库。 */
 export async function loadVault(): Promise<void> {
   const preferences = getPreferenceValues<Preferences>();
-  const filePath = preferences.dataFile ? resolveVaultPath(preferences.dataFile) : "";
+  let selected = preferences.dataFile?.trim() || "";
+  try {
+    const override = JSON.parse((await LocalStorage.getItem<string>(SOURCE_OVERRIDE_KEY)) || "null") as { filePath?: unknown; preference?: unknown } | null;
+    if (override && override.preference === (preferences.dataFile || "") && typeof override.filePath === "string") selected = override.filePath;
+  } catch { /* 无效的路径偏好不会覆盖已选文件 */ }
+  if (selected && (!path.isAbsolute(normalizePath(selected)) || path.extname(selected).toLowerCase() !== ".json")) {
+    setState({ status: "ready", syncStatus: "error", message: t("Data source must be an absolute path to a .json file; existing data was not written.", "数据源须为绝对路径的 .json 文件；原有数据未写入。"), needsCreate: false });
+    return;
+  }
+  const filePath = selected ? resolveVaultPath(selected) : "";
   if (!filePath) {
     const read = await readLocalVault();
     baseline = null;
@@ -238,7 +262,7 @@ async function pollExternal(): Promise<void> {
 
 async function persist(
   snapshot: SyncSnapshot,
-  options: { allowCreate?: boolean; overwrite?: boolean } = {},
+  options: { allowCreate?: boolean; overwrite?: boolean; createOnly?: boolean } = {},
 ): Promise<boolean> {
   if (!state.filePath) {
     if (state.localBroken && !options.allowCreate) {
@@ -292,7 +316,7 @@ async function persist(
   const serialized = exportAsSyncJson(snapshot.accounts, snapshot.groups, snapshot.trash);
   // 版本依据是逐字节内容，不是 mtime/size：锁内比对，外部一改就拒绝。
   const expectedContent = !options.overwrite && baseline ? baseline.content : null;
-  const result = await writeVaultFile(state.filePath, serialized, expectedContent);
+  const result = await writeVaultFile(state.filePath, serialized, expectedContent, options.createOnly);
   if (result.status === "ok") {
     baseline = { content: serialized, stat: { mtimeMs: result.mtimeMs, size: result.size } };
     setState({
@@ -355,10 +379,10 @@ export async function updateVault(
 
 /** 用户显式确认：在缺失/空路径上新建数据源文件（写入当前数据）。 */
 export async function createDataSource(): Promise<boolean> {
-  if (!state.filePath) return false;
+  if (!state.filePath || !state.needsCreate) return false;
   return persist(
     { accounts: state.accounts, groups: state.groups, trash: state.trash },
-    { allowCreate: true, overwrite: true },
+    { allowCreate: true, overwrite: true, createOnly: true },
   );
 }
 
