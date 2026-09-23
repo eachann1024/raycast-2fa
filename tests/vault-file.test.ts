@@ -91,6 +91,20 @@ describe("数据源文件读写（与 uTools 端同一把锁）", () => {
     expect(readdirSync(directory)).toEqual(["sync.json"]);
   });
 
+  test("新建数据源只允许空路径，不能覆盖已有内容", async () => {
+    const content = exportAsSyncJson([], [], []);
+    expect((await writeVaultFile(target, content, null, true)).status).toBe("ok");
+    expect(statSync(target).mode & 0o777).toBe(0o600);
+    expect((await writeVaultFile(target, "changed", null, true)).status).toBe("conflict");
+    expect(readFileSync(target, "utf8")).toBe(content);
+    expect(readdirSync(directory)).toEqual(["sync.json"]);
+  });
+
+  test("超出数据源上限时不创建文件", async () => {
+    expect((await writeVaultFile(target, "x".repeat(5 * 1024 * 1024 + 1), null, true)).status).toBe("error");
+    expect(readVaultFile(target).status).toBe("missing");
+  });
+
   test("另一个进程持锁时拒绝写入，且绝不按时间抢锁", async () => {
     writeFileSync(target, "old");
     const lockPath = `${target}.lock`;
