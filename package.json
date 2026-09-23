@@ -41,6 +41,23 @@
   ],
   "preferences": [
     {
+      "name": "viewMode",
+      "title": "Main View Layout",
+      "type": "dropdown",
+      "required": false,
+      "default": "list",
+      "data": [
+        {
+          "title": "List (arrow-key navigation)",
+          "value": "list"
+        },
+        {
+          "title": "Grid",
+          "value": "grid"
+        }
+      ]
+    },
+    {
       "name": "enterAction",
       "title": "Return Action",
       "type": "dropdown",

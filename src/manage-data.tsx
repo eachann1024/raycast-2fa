@@ -40,8 +40,16 @@ export default function ManageData() {
   const { push } = useNavigation();
 
   return (
-    <List isLoading={vault.status === "loading" || vault.syncStatus === "writing"} searchBarPlaceholder="搜索账户或分组">
-      <List.Section title="数据源">
+    <List navigationTitle={t("Settings & Data", "设置与数据")} isLoading={vault.status === "loading" || vault.syncStatus === "writing"} searchBarPlaceholder={t("Search accounts or groups", "搜索账户或分组")}>
+      <List.Section title={t("Settings", "设置")}>
+        <List.Item
+          icon={Icon.Gear}
+          title={t("Layout, Return Action & Close After Copy", "布局、回车动作与复制后关闭")}
+          subtitle={t("Choose list or grid, copy or paste in extension preferences; reopen the main view afterward", "在扩展设置中选择列表或宫格、复制或粘贴；更改后重新打开主界面")}
+          actions={<ActionPanel><Action title={t("Open Extension Preferences", "打开扩展设置")} icon={Icon.Gear} onAction={openExtensionPreferences} /></ActionPanel>}
+        />
+      </List.Section>
+      <List.Section title={t("Data Source", "数据源")}>
         <List.Item
           icon={vault.source === "file" ? Icon.HardDrive : Icon.Desktop}
           title={vault.source === "file" ? vault.filePath : t("No file configured; using Raycast Local Vault", "未配置文件，使用 Raycast 本地库")}

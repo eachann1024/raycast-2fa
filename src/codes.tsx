@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, List, Toast, getPreferenceValues, showToast } from "@raycast/api";
+import { Action, ActionPanel, Grid, Icon, List, Toast, getPreferenceValues, showToast } from "@raycast/api";
 import { useEffect, useMemo, useState } from "react";
 import type { LaunchProps } from "@raycast/api";
 import { buildGroupTallies, filterByGroup, UNGROUPED_KEY } from "../vendor/lib/groups";
@@ -70,6 +70,64 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
       <Action.Push title={t("Open Settings & Data", "打开设置与数据")} icon={Icon.Gear} target={<ManageData />} />
     </ActionPanel>
   );
+  const gridSourceActions = (
+    <ActionPanel>
+      <Action.Push title={t("Open Settings & Data", "打开设置与数据")} icon={Icon.Gear} target={<ManageData />} />
+      <Action title={t("Reload Data Source", "重新读取数据源文件")} icon={Icon.ArrowClockwise} onAction={() => void refreshVault()} />
+    </ActionPanel>
+  );
+
+  if (preferences.viewMode === "grid") {
+    return (
+      <Grid
+        columns={5}
+        isLoading={vault.status === "loading" || vault.syncStatus === "writing"}
+        filtering={false}
+        searchText={query}
+        onSearchTextChange={setQuery}
+        searchBarPlaceholder={t("Search accounts, issuers, notes or groups", "搜索账户、发行方、备注或分组")}
+        searchBarAccessory={
+          <Grid.Dropdown tooltip={t("Groups", "分组")} value={group} onChange={setGroup}>
+            <Grid.Dropdown.Item title={t(`All Accounts (${vault.accounts.length})`, `全部账户 (${vault.accounts.length})`)} value={ALL_GROUPS} />
+            {tallies.map((tally) => (
+              <Grid.Dropdown.Item key={tally.id} title={`${tally.id === UNGROUPED_KEY ? t("Ungrouped", "未分组") : tally.name} (${tally.count})`} value={tally.id} />
+            ))}
+          </Grid.Dropdown>
+        }
+      >
+        {vault.message && (
+          <Grid.Section title={t("Action Required", "需要处理")}>
+            <Grid.Item content={Icon.Warning} title={t("Data Source", "数据源")} subtitle={vault.message} actions={issueActions} />
+          </Grid.Section>
+        )}
+        <Grid.Section title={t(`Codes (${visible.length})`, `验证码 (${visible.length})`)}>
+          {visible.map((account) => {
+            const code = codes[account.id]?.code ?? "------";
+            return (
+              <Grid.Item
+                key={account.id}
+                id={account.id}
+                content={account.type === "hotp" ? Icon.Hashtag : Icon.Key}
+                title={account.note || account.name}
+                subtitle={/^\d+$/.test(code) ? formatCode(code) : "…"}
+                keywords={[account.name, account.issuer, account.note ?? "", account.remark ?? ""]}
+                actions={<CodeActions account={account} code={code} enterAction={preferences.enterAction ?? "copy"} closeAfterCopy={preferences.closeAfterCopy ?? true} />}
+              />
+            );
+          })}
+        </Grid.Section>
+        <Grid.Section title={t("Data Source", "数据源")}>
+          <Grid.Item
+            content={Icon.HardDrive}
+            title={t("Settings & Data", "设置与数据")}
+            subtitle={vault.source === "file" ? vault.filePath : t("Raycast Local Vault", "Raycast 本地库")}
+            actions={gridSourceActions}
+          />
+        </Grid.Section>
+      </Grid>
+    );
+  }
+
   return (
     <List
       isLoading={vault.status === "loading" || vault.syncStatus === "writing"}
