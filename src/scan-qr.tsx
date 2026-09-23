@@ -18,6 +18,7 @@ export default function ScanQr() {
   const vault = useVault();
   const [entries, setEntries] = useState<ScannedEntry[]>([]);
   const [status, setStatus] = useState<"scanning" | "ready" | "empty">("scanning");
+  const newInputs = new Set(deduplicateImports(entries.map((entry) => entry.input), vault.accounts).newAccounts);
 
   useEffect(() => {
     let active = true;
@@ -94,7 +95,7 @@ export default function ScanQr() {
           icon={Icon.Key}
           title={entry.input.name}
           subtitle={entry.input.issuer}
-          accessories={[{ text: entry.input.type.toUpperCase() }]}
+          accessories={[{ text: newInputs.has(entry.input) ? entry.input.type.toUpperCase() : t("Already Added", "已存在") }]}
           actions={
             <ActionPanel>
               <Action title={t("Import This Account", "导入这个账户")} icon={Icon.Download} onAction={() => void importEntries([entry])} />
