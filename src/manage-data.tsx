@@ -10,11 +10,11 @@ import {
   showToast,
   useNavigation,
 } from "@raycast/api";
-import { readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { useState } from "react";
 import { normalizeNewAccountInput } from "../vendor/lib/account-validation";
-import { exportAsJson, exportAsSyncJson } from "../vendor/lib/data-transfer";
+import { exportAsSyncJson } from "../vendor/lib/data-transfer";
 import type { AccountData, NewAccountInput, VaultGroup } from "../vendor/lib/types";
 import { syncStatus, t } from "./lib/i18n";
 import { commit } from "./lib/commit";
@@ -231,34 +231,7 @@ export default function ManageData() {
           title="从文件导入"
           actions={
             <ActionPanel>
-              <Action title="选择备份文件" icon={Icon.Upload} onAction={() => push(<ImportForm />)} />
-            </ActionPanel>
-          }
-        />
-        <List.Item
-          icon={Icon.Clipboard}
-          title="导出到剪贴板"
-          subtitle="含 id/回收站的完整数据源格式"
-          actions={
-            <ActionPanel>
-              <Action
-                title="复制完整备份"
-                icon={Icon.Clipboard}
-                onAction={async () => {
-                  const snapshot = getVaultState();
-                  await Clipboard.copy(exportAsSyncJson(snapshot.accounts, snapshot.groups, snapshot.trash));
-                  await showToast({ style: Toast.Style.Success, title: "完整备份已复制" });
-                }}
-              />
-              <Action
-                title="复制兼容导入的备份"
-                icon={Icon.Clipboard}
-                onAction={async () => {
-                  const snapshot = getVaultState();
-                  await Clipboard.copy(exportAsJson(snapshot.accounts, snapshot.groups));
-                  await showToast({ style: Toast.Style.Success, title: "备份已复制（不含回收站）" });
-                }}
-              />
+              <Action title={t("Choose Backup File", "选择备份文件")} icon={Icon.Upload} onAction={() => push(<ImportForm />)} />
             </ActionPanel>
           }
         />
