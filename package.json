@@ -41,6 +41,31 @@
   ],
   "preferences": [
     {
+      "name": "enterAction",
+      "title": "Return Action",
+      "type": "dropdown",
+      "required": false,
+      "default": "copy",
+      "data": [
+        {
+          "title": "Copy Code",
+          "value": "copy"
+        },
+        {
+          "title": "Paste into Previous Field",
+          "value": "paste"
+        }
+      ]
+    },
+    {
+      "name": "closeAfterCopy",
+      "title": "After Copy",
+      "label": "Close Raycast and return to desktop",
+      "type": "checkbox",
+      "required": false,
+      "default": true
+    },
+    {
       "name": "dataFile",
       "title": "Data Source File",
       "description": "Choose an existing JSON file. Or create one in a chosen folder from Settings & Data. Select the same iCloud file on both clients to sync. The file contains plaintext 2FA secrets.",
