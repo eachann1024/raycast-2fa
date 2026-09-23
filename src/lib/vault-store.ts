@@ -179,7 +179,7 @@ export async function loadVault(): Promise<void> {
       needsCreate: false,
       conflict: null,
     });
-    if (corrected) void persist(snapshot, { allowCreate: true, overwrite: true });
+    if (corrected) void persist(snapshot);
     return;
   }
 
@@ -226,7 +226,7 @@ export async function refreshVault(): Promise<void> {
     needsCreate: false,
     conflict: null,
   });
-  if (corrected) void persist(snapshot, { allowCreate: true, overwrite: true });
+  if (corrected) void persist(snapshot);
 }
 
 /** 轮询数据源文件，自动载入外部改动；自身写入不回环。 */
@@ -257,13 +257,14 @@ async function pollExternal(): Promise<void> {
     needsCreate: false,
     conflict: null,
   });
-  if (corrected) void persist(snapshot, { allowCreate: true, overwrite: true });
+  if (corrected) void persist(snapshot);
 }
 
 async function persist(
   snapshot: SyncSnapshot,
   options: { allowCreate?: boolean; overwrite?: boolean; createOnly?: boolean } = {},
 ): Promise<boolean> {
+  if (state.syncStatus === "writing") return false;
   if (!state.filePath) {
     if (state.localBroken && !options.allowCreate) {
       setState({
@@ -273,9 +274,15 @@ async function persist(
       });
       return false;
     }
-    await writeLocalVault(snapshot);
-    setState({ ...snapshot, syncStatus: "success", message: null, notice: null, conflict: null, localBroken: false });
-    return true;
+    setState({ syncStatus: "writing" });
+    try {
+      await writeLocalVault(snapshot);
+      setState({ ...snapshot, syncStatus: "success", message: null, notice: null, conflict: null, localBroken: false });
+      return true;
+    } catch {
+      setState({ syncStatus: "error", message: t("Could not save the local vault.", "无法保存本地保险柜。") });
+      return false;
+    }
   }
 
   setState({ syncStatus: "writing", lockHeld: null });
@@ -332,11 +339,6 @@ async function persist(
   }
   if (result.status === "conflict") {
     const reread = readVaultFile(state.filePath);
-    if (reread.status === "ok" && isSameSyncContent(reread.content, serialized)) {
-      baseline = { content: serialized, stat: { mtimeMs: reread.mtimeMs, size: reread.size } };
-      setState({ ...snapshot, syncStatus: "success", message: null, conflict: null });
-      return true;
-    }
     if (reread.status === "ok") {
       setState({
         syncStatus: "conflict",
@@ -428,7 +430,7 @@ export async function resolveConflict(choice: "file" | "local"): Promise<void> {
       needsCreate: false,
       conflict: null,
     });
-    if (corrected) void persist(snapshot, { allowCreate: true, overwrite: true });
+    if (corrected) void persist(snapshot);
     return;
   }
   const merged = {
@@ -439,9 +441,9 @@ export async function resolveConflict(choice: "file" | "local"): Promise<void> {
     groups: state.groups,
     trash: state.trash,
   };
-  baseline = null;
+  baseline = { content: conflict.content, stat: conflict.stat };
   setState({ conflict: null, message: null, notice: t("Local data will replace the data source file.", "将以本地数据覆盖数据源文件。") });
-  await persist(merged, { allowCreate: true, overwrite: true });
+  await persist(merged);
 }
 
 /** 视图存活期间轮询外部改动；命令被卸载即停止。 */

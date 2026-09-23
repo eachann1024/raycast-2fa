@@ -1,8 +1,7 @@
-# 更新日志
+# Goose 2FA Changelog
 
-## 2026-09-23
+## [Initial Release] - {PR_MERGE_DATE}
 
-- 可在主界面切换列表和宫格，并设置回车时复制或粘贴验证码、复制后是否关闭 Raycast。
-- 可在指定文件夹新建数据源；已有文件不会被覆盖。使用同一数据源文件时，请妥善保管其中的明文 2FA 密钥。
-- 导入前可预览新增账户及重复项；导出备份仅新建受保护文件，不再提供含密钥的剪贴板导出。
-- 管理和扫码入口合并到主界面，扩展内页面可选择英文或简体中文。
+- Search two-factor accounts in a list or grid and copy or paste codes.
+- Import and export accounts with a preview; create a shared JSON data source without overwriting existing files.
+- Manage accounts, groups, trash, and QR-code scanning from a single command.

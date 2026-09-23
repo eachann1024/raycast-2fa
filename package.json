@@ -43,6 +43,7 @@
     {
       "name": "viewMode",
       "title": "Main View Layout",
+      "description": "Choose a list or grid for the main view.",
       "type": "dropdown",
       "required": false,
       "default": "list",
@@ -60,6 +61,7 @@
     {
       "name": "enterAction",
       "title": "Return Action",
+      "description": "Choose whether Return copies the code or pastes it into the previous field.",
       "type": "dropdown",
       "required": false,
       "default": "copy",
@@ -77,6 +79,7 @@
     {
       "name": "closeAfterCopy",
       "title": "After Copy",
+      "description": "Close Raycast and return to the previous app after copying a code.",
       "label": "Close Raycast and return to desktop",
       "type": "checkbox",
       "required": false,
@@ -92,6 +95,7 @@
     {
       "name": "language",
       "title": "Language",
+      "description": "Choose the language used inside the extension; English is the default.",
       "type": "dropdown",
       "required": false,
       "default": "en",

@@ -156,4 +156,11 @@ describe("数据源文件读写（与 uTools 端同一把锁）", () => {
     expect(await writeVaultFile(gone, "new", "old")).toEqual({ status: "conflict" });
     expect(readdirSync(directory).sort()).toEqual(["sync.json"]);
   });
+
+  test("相同的 HOTP 增量也不能用旧版本重复提交", async () => {
+    writeFileSync(target, "counter=3");
+    expect((await writeVaultFile(target, "counter=4", "counter=3")).status).toBe("ok");
+    expect((await writeVaultFile(target, "counter=4", "counter=3")).status).toBe("conflict");
+    expect(readFileSync(target, "utf8")).toBe("counter=4");
+  });
 });

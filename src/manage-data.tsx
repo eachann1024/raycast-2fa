@@ -472,7 +472,12 @@ function ImportPreview({ text }: { text: string }) {
         title={t("Confirm Import", "确认导入")}
         subtitle={t("Secrets are hidden; they will be available in your local data source after import.", "验证码密钥不会显示；导入后可在本机数据源中查看。")}
         actions={<ActionPanel><Action title={t(`Import ${preview.added} accounts`, `导入 ${preview.added} 个账户`)} icon={Icon.Download} onAction={async () => {
-          const ok = await commit((snapshot) => previewImport(text, snapshot)?.snapshot ?? snapshot, t(`Imported ${preview.added} accounts`, `已导入 ${preview.added} 个账户`));
+          const currentPreview = previewImport(text, getVaultState());
+          if (!currentPreview) {
+            await showToast({ style: Toast.Style.Failure, title: t("Could Not Parse Backup", "备份无法解析") });
+            return;
+          }
+          const ok = await commit(() => currentPreview.snapshot, t(`Imported ${currentPreview.added} accounts`, `已导入 ${currentPreview.added} 个账户`));
           if (ok) pop();
         }} /></ActionPanel>}
       />

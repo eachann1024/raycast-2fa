@@ -2,7 +2,9 @@ import { t } from "./i18n";
 import { Clipboard, PopToRootType, Toast, closeMainWindow, showHUD, showToast } from "@raycast/api";
 import type { AccountData } from "../../vendor/lib/types";
 import { typeText } from "./helper";
-import { consumeHotp } from "./vault-store";
+import { consumeHotp, getVaultState } from "./vault-store";
+
+const deliveringHotp = new Set<string>();
 
 export type DeliveryMode = "copy" | "paste" | "type";
 
@@ -12,13 +14,25 @@ export async function deliverCode(account: AccountData, code: string, mode: Deli
     await showToast({ style: Toast.Style.Failure, title: t("Code Unavailable", "验证码不可用"), message: t("Please try again shortly.", "请稍后重试。") });
     return false;
   }
-  if (account.type === "hotp" && !(await consumeHotp(account.id))) {
-    await showToast({
-      style: Toast.Style.Failure,
-      title: t("Could Not Save HOTP Counter", "HOTP 计数器未能保存"),
-      message: t("Delivery cancelled; please retry.", "已取消发送，请重试。"),
-    });
-    return false;
+  if (account.type === "hotp") {
+    const current = getVaultState().accounts.find((item) => item.id === account.id);
+    if (!current || current.type !== "hotp" || current.counter !== account.counter || current.secret !== account.secret || deliveringHotp.has(account.id)) {
+      await showToast({ style: Toast.Style.Failure, title: t("Code Changed", "验证码已变化"), message: t("Refresh and try again.", "请刷新后重试。") });
+      return false;
+    }
+    deliveringHotp.add(account.id);
+    try {
+      if (!(await consumeHotp(account.id))) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: t("Could Not Save HOTP Counter", "HOTP 计数器未能保存"),
+          message: t("Delivery cancelled; please retry.", "已取消发送，请重试。"),
+        });
+        return false;
+      }
+    } finally {
+      deliveringHotp.delete(account.id);
+    }
   }
   if (mode === "type") {
     const result = await typeText(code);
