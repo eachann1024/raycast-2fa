@@ -1,121 +1,83 @@
-import { Action, ActionPanel, Icon, List, Toast, popToRoot, showToast } from "@raycast/api";
-import { unlinkSync } from "node:fs";
+import { Action, ActionPanel, Form, Icon, List, Toast, showToast, useNavigation } from "@raycast/api";
+import { statSync, unlinkSync } from "node:fs";
+import path from "node:path";
 import { useEffect, useState } from "react";
 import { deduplicateImports, parseImportBundle } from "../vendor/lib/data-transfer";
 import type { NewAccountInput } from "../vendor/lib/types";
-import { t } from "./lib/i18n";
-import { commit } from "./lib/commit";
+import AccountForm from "./account-form";
 import { captureScreenToTempFile, detectBarcodes } from "./lib/helper";
-import { addAccounts } from "./lib/vault-ops";
+import { t } from "./lib/i18n";
 import { getVaultState, useVault } from "./lib/vault-store";
 
-interface ScannedEntry {
-  input: NewAccountInput;
-  payload: string;
-}
-
-export default function ScanQr() {
+export default function ScanQr({ source = "screen" }: { source?: "screen" | "image" }) {
   const vault = useVault();
-  const [entries, setEntries] = useState<ScannedEntry[]>([]);
-  const [status, setStatus] = useState<"scanning" | "ready" | "empty">("scanning");
-  const newInputs = new Set(deduplicateImports(entries.map((entry) => entry.input), vault.accounts).newAccounts);
+  const { pop, push } = useNavigation();
+  const [entries, setEntries] = useState<NewAccountInput[]>([]);
+  const [status, setStatus] = useState<"selecting" | "scanning" | "ready" | "empty">(source === "image" ? "selecting" : "scanning");
+  const newInputs = new Set(deduplicateImports(entries, vault.accounts).newAccounts);
+
+  async function scan(imagePath: string) {
+    try {
+      const found = (await detectBarcodes(imagePath)).flatMap((payload) => parseImportBundle(payload)?.accounts ?? []);
+      const unique = deduplicateImports(found, getVaultState().accounts).newAccounts;
+      setEntries(found);
+      setStatus(found.length ? "ready" : "empty");
+      if (unique.length === 1 && found.length === 1) push(<AccountForm mode="create" initial={unique[0]} />);
+    } catch (error) {
+      await showToast({ style: Toast.Style.Failure, title: t("Scan Failed", "识别失败"), message: error instanceof Error ? error.message : String(error) });
+      setStatus("empty");
+    }
+  }
 
   useEffect(() => {
+    if (source !== "screen") return;
     let active = true;
     void (async () => {
       const imagePath = await captureScreenToTempFile();
-      if (!active) return;
       if (!imagePath) {
-        await showToast({ style: Toast.Style.Failure, title: t("Screenshot cancelled", "已取消截屏") });
-        await popToRoot();
+        if (active) pop();
         return;
       }
       try {
-        const payloads = await detectBarcodes(imagePath);
-        const found: ScannedEntry[] = [];
-        for (const payload of payloads) {
-          const bundle = parseImportBundle(payload);
-          for (const input of bundle?.accounts ?? []) found.push({ input, payload });
-        }
-        if (!active) return;
-        setEntries(found);
-        setStatus(found.length > 0 ? "ready" : "empty");
-      } catch (error) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: t("Scan Failed", "识别失败"),
-          message: error instanceof Error ? error.message : String(error),
-        });
-        setStatus("empty");
+        if (active) await scan(imagePath);
       } finally {
-        try {
-          unlinkSync(imagePath);
-        } catch {
-          /* 临时文件可能已被系统清理 */
-        }
+        try { unlinkSync(imagePath); } catch { /* System may have removed the temporary screenshot. */ }
       }
     })();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
+    // ponytail: one capture per mounted scanner; a new scan is a new navigation, not a reactive effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const importEntries = async (chosen: ScannedEntry[]) => {
-    if (chosen.length === 0) return;
-    const inputs = chosen.map((entry) => entry.input);
-    const preview = deduplicateImports(inputs, getVaultState().accounts);
-    if (!preview.newAccounts.length) {
-      await showToast({ style: Toast.Style.Success, title: t("Accounts Already Exist", "账户已存在"), message: t("No duplicate accounts were imported.", "未重复导入账户。") });
-      return;
-    }
-    const ok = await commit(
-      (snapshot) => addAccounts(snapshot, deduplicateImports(inputs, snapshot.accounts).newAccounts, null),
-      t(`Imported ${preview.newAccounts.length} accounts (${preview.dupeCount} skipped)`, `已导入 ${preview.newAccounts.length} 个账户（跳过 ${preview.dupeCount} 个重复项）`),
-    );
-    if (ok) await popToRoot();
-  };
+  if (status === "selecting") return (
+    <Form navigationTitle={t("Import QR Image", "从图片识码")} actions={<ActionPanel><Action.SubmitForm title={t("Scan Image", "识别图片")} onSubmit={async (values: { files?: string[] }) => {
+      const file = values.files?.[0];
+      if (!file) {
+        await showToast({ style: Toast.Style.Failure, title: t("Choose an image", "请选择图片") });
+        return;
+      }
+      try {
+        const stat = statSync(file);
+        if (!stat.isFile() || !stat.size || stat.size > 5 * 1024 * 1024 || ![".png", ".jpg", ".jpeg", ".heic", ".heif"].includes(path.extname(file).toLowerCase())) throw new Error();
+      } catch {
+        await showToast({ style: Toast.Style.Failure, title: t("Invalid image", "图片无效"), message: t("Choose a PNG, JPEG or HEIC image under 5 MB.", "请选择小于 5 MB 的 PNG、JPEG 或 HEIC 图片。") });
+        return;
+      }
+      setStatus("scanning");
+      await scan(file);
+    }} /></ActionPanel>}>
+      <Form.FilePicker id="files" title={t("QR Image", "二维码图片")} allowMultipleSelection={false} />
+    </Form>
+  );
 
   return (
     <List isLoading={status === "scanning" || vault.syncStatus === "writing"} searchBarPlaceholder={t("Search scan results", "搜索识别结果")}>
-      {status === "empty" ? (
-        <List.Item
-          icon={Icon.MagnifyingGlass}
-          title={t("No QR Code Found", "没有识别到二维码")}
-          subtitle={t("No parseable otpauth code in the captured area", "截屏区域里没有可解析的 otpauth 码")}
-          actions={
-            <ActionPanel>
-              <Action title={t("Capture Again", "重新截屏")} icon={Icon.Camera} onAction={() => void popToRoot()} />
-            </ActionPanel>
-          }
-        />
-      ) : null}
-      {entries.map((entry, index) => (
-        <List.Item
-          key={`${entry.input.name}-${index}`}
-          icon={Icon.Key}
-          title={entry.input.name}
-          subtitle={entry.input.issuer}
-          accessories={[{ text: newInputs.has(entry.input) ? entry.input.type.toUpperCase() : t("Already Added", "已存在") }]}
-          actions={
-            <ActionPanel>
-              <Action title={t("Import This Account", "导入这个账户")} icon={Icon.Download} onAction={() => void importEntries([entry])} />
-              <Action title={t("Import All", "导入全部")} icon={Icon.Download} onAction={() => void importEntries(entries)} />
-              <Action.CopyToClipboard title={t("Copy QR Content", "复制二维码内容")} content={entry.payload} />
-            </ActionPanel>
-          }
-        />
+      {status === "empty" && <List.Item icon={Icon.MagnifyingGlass} title={t("No QR Code Found", "没有识别到二维码")} subtitle={t("No supported account was found in the image.", "图片中没有可识别的账户。")}
+        actions={<ActionPanel>{source === "image" ? <Action title={t("Choose Another Image", "选择另一张图片")} icon={Icon.Upload} onAction={() => setStatus("selecting")} /> : <Action title={t("Back to Codes", "返回验证码")} icon={Icon.ArrowLeft} onAction={pop} />}</ActionPanel>} />}
+      {entries.map((input, index) => (
+        <List.Item key={`${input.name}-${index}`} icon={Icon.Key} title={input.name} subtitle={input.issuer} accessories={[{ text: newInputs.has(input) ? input.type.toUpperCase() : t("Already Added", "已存在") }]}
+          actions={<ActionPanel><Action.Push title={t("Edit and Save Account", "编辑并保存账户")} icon={Icon.Pencil} target={<AccountForm mode="create" initial={input} />} /></ActionPanel>} />
       ))}
-      {status === "ready" ? (
-        <List.Item
-          icon={Icon.Download}
-          title={t(`Import All ${entries.length} Accounts`, `导入全部 ${entries.length} 个账户`)}
-          actions={
-            <ActionPanel>
-              <Action title={t("Import All", "导入全部")} icon={Icon.Download} onAction={() => void importEntries(entries)} />
-            </ActionPanel>
-          }
-        />
-      ) : null}
     </List>
   );
 }
