@@ -42,73 +42,55 @@
   "preferences": [
     {
       "name": "viewMode",
-      "title": "主界面布局 / Main View Layout",
-      "description": "选择列表或宫格 / Choose a list or grid.",
+      "title": "Main View Layout",
+      "description": "Choose a list or grid for the main view.",
       "type": "dropdown",
       "required": false,
       "default": "list",
       "data": [
         {
-          "title": "列表（方向键导航） / List",
+          "title": "List (arrow-key navigation)",
           "value": "list"
         },
         {
-          "title": "宫格 / Grid",
+          "title": "Grid",
           "value": "grid"
         }
       ]
     },
     {
       "name": "enterAction",
-      "title": "回车动作 / Return Action",
-      "description": "复制验证码或粘贴到上一输入框 / Copy or paste the code.",
+      "title": "Return Action",
+      "description": "Choose whether Return copies the code or pastes it into the previous field.",
       "type": "dropdown",
       "required": false,
       "default": "copy",
       "data": [
         {
-          "title": "复制验证码 / Copy Code",
+          "title": "Copy Code",
           "value": "copy"
         },
         {
-          "title": "粘贴到上一输入框 / Paste",
+          "title": "Paste into Previous Field",
           "value": "paste"
         }
       ]
     },
     {
       "name": "closeAfterCopy",
-      "title": "复制后 / After Copy",
-      "description": "复制后关闭 Raycast 并返回之前的应用 / Close Raycast after copying.",
-      "label": "关闭 Raycast 并返回桌面 / Close Raycast",
+      "title": "After Copy",
+      "description": "Close Raycast and return to the previous app after copying a code.",
+      "label": "Close Raycast and return to desktop",
       "type": "checkbox",
       "required": false,
       "default": true
     },
     {
       "name": "dataFile",
-      "title": "数据源文件 / Data Source File",
-      "description": "选择已有 JSON 文件；新建并保存请到「设置与数据」。两端使用同一 iCloud 文件可同步。文件包含明文 2FA 密钥 / Choose an existing file; save a new one in Settings & Data.",
+      "title": "Data Source File",
+      "description": "Choose an existing JSON file. Or create one in a chosen folder from Settings & Data. Select the same iCloud file on both clients to sync. The file contains plaintext 2FA secrets.",
       "type": "file",
       "required": false
-    },
-    {
-      "name": "language",
-      "title": "语言 / Language",
-      "description": "选择扩展内界面语言；Raycast 原生偏好设置标签固定双语 / Choose the extension language; Raycast preference labels are bilingual.",
-      "type": "dropdown",
-      "required": false,
-      "default": "en",
-      "data": [
-        {
-          "title": "英语 / English",
-          "value": "en"
-        },
-        {
-          "title": "简体中文 / Simplified Chinese",
-          "value": "zh-Hans"
-        }
-      ]
     }
   ],
   "scripts": {

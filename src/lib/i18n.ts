@@ -1,12 +1,5 @@
-import { getPreferenceValues } from "@raycast/api";
-
-// ponytail: Raycast manifest is static; the language preference localizes extension views, not Raycast's command/settings labels.
-export function isChinese(): boolean {
-  return getPreferenceValues<Preferences>().language === "zh-Hans";
-}
-
-export function t(english: string, chinese: string): string {
-  return isChinese() ? chinese : english;
+export function t(english: string, _chinese: string): string {
+  return english;
 }
 
 export function syncStatus(status: string): string {

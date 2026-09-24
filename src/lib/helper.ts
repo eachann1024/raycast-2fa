@@ -1,4 +1,4 @@
-import { isChinese, t } from "./i18n";
+import { t } from "./i18n";
 import { environment } from "@raycast/api";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -17,7 +17,7 @@ export function helperPath(): string {
 export async function typeText(text: string): Promise<{ ok: true } | { ok: false; message: string }> {
   if (!text) return { ok: false, message: t("No code available to type.", "没有可输入的验证码。") };
   try {
-    await execFileAsync(helperPath(), ["type", text], { env: { ...process.env, GOOSE_2FA_LANG: isChinese() ? "zh-Hans" : "en" } });
+    await execFileAsync(helperPath(), ["type", text]);
     return { ok: true };
   } catch (error) {
     const stderr = (error as { stderr?: string }).stderr?.trim();
@@ -27,7 +27,7 @@ export async function typeText(text: string): Promise<{ ok: true } | { ok: false
 
 /** 用 Vision 识别图片里的二维码/条码，逐行返回 payload。 */
 export async function detectBarcodes(imagePath: string): Promise<string[]> {
-  const { stdout } = await execFileAsync(helperPath(), ["qr", imagePath], { maxBuffer: 1024 * 1024, env: { ...process.env, GOOSE_2FA_LANG: isChinese() ? "zh-Hans" : "en" } });
+  const { stdout } = await execFileAsync(helperPath(), ["qr", imagePath], { maxBuffer: 1024 * 1024 });
   return stdout
     .split("\n")
     .map((line) => line.trim())
