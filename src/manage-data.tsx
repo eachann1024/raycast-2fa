@@ -1,7 +1,6 @@
 import {
   Action,
   ActionPanel,
-  Clipboard,
   Form,
   Icon,
   List,
@@ -13,14 +12,12 @@ import {
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { useState } from "react";
-import { normalizeNewAccountInput } from "../vendor/lib/account-validation";
 import { exportAsSyncJson } from "../vendor/lib/data-transfer";
 import type { AccountData, NewAccountInput, VaultGroup } from "../vendor/lib/types";
 import { syncStatus, t } from "./lib/i18n";
 import { commit } from "./lib/commit";
 import { normalizePath, resolveVaultPath, writeBackupFile, writeVaultFile } from "./lib/vault-file";
 import {
-  addAccounts,
   addGroup,
   deleteForever,
   emptyTrash,
@@ -30,10 +27,9 @@ import {
   renameGroup,
   restoreFromTrash,
   setAccountGroup,
-  setAccountText,
 } from "./lib/vault-ops";
 import { clearCreatedSource, createDataSource, clearSyncLock, getVaultState, refreshVault, resetLocalVault, resolveConflict, selectCreatedSource, useVault } from "./lib/vault-store";
-import ScanQr from "./scan-qr";
+import AccountForm from "./account-form";
 
 export default function ManageData() {
   const vault = useVault();
@@ -41,21 +37,7 @@ export default function ManageData() {
 
   return (
     <List navigationTitle={t("Settings & Data", "设置与数据")} isLoading={vault.status === "loading" || vault.syncStatus === "writing"} searchBarPlaceholder={t("Search accounts or groups", "搜索账户或分组")}>
-      <List.Section title={t("Settings", "设置")}>
-        <List.Item
-          icon={Icon.Gear}
-          title={t("Layout, Return Action & Close After Copy", "布局、回车动作与复制后关闭")}
-          subtitle={t("Choose list or grid, copy or paste in extension preferences; reopen the main view afterward", "在扩展设置中选择列表或宫格、复制或粘贴；更改后重新打开主界面")}
-          actions={<ActionPanel><Action title={t("Open Extension Preferences", "打开扩展设置")} icon={Icon.Gear} onAction={openExtensionPreferences} /></ActionPanel>}
-        />
-      </List.Section>
       <List.Section title={t("Data Source", "数据源")}>
-        <List.Item
-          icon={Icon.SaveDocument}
-          title={t("Save Current Data as a Sync File", "保存当前数据为同步文件")}
-          subtitle={t("Choose a folder and filename; the new file becomes the data source", "选择目录和文件名；新文件将作为数据源")}
-          actions={<ActionPanel><Action.Push title={t("Save Current Data", "保存当前数据")} icon={Icon.SaveDocument} target={<CreateSourceForm />} /></ActionPanel>}
-        />
         <List.Item
           icon={vault.source === "file" ? Icon.HardDrive : Icon.Desktop}
           title={vault.source === "file" ? vault.filePath : t("No file configured; using Raycast Local Vault", "未配置文件，使用 Raycast 本地库")}
@@ -63,13 +45,13 @@ export default function ManageData() {
           accessories={vault.conflict ? [{ text: t("Conflict Needs Resolution", "冲突待处理"), icon: Icon.Warning }] : undefined}
           actions={
             <ActionPanel>
-              <Action
-                title={t("Reload Data Source", "重新读取数据源文件")}
-                icon={Icon.ArrowClockwise}
-                onAction={() => void refreshVault()}
-              />
+              {vault.source === "file" ? (
+                <Action title={t("Reload Data Source", "重新读取数据源文件")} icon={Icon.ArrowClockwise} onAction={() => void refreshVault()} />
+              ) : (
+                <Action.Push title={t("Save Current Data as a Sync File", "保存当前数据为同步文件")} icon={Icon.SaveDocument} target={<CreateSourceForm />} />
+              )}
               <Action title={t("Open Extension Preferences", "打开扩展设置")} icon={Icon.Gear} onAction={openExtensionPreferences} />
-              <Action.Push title={t("Save Current Data as a Sync File", "保存当前数据为同步文件")} icon={Icon.SaveDocument} target={<CreateSourceForm />} />
+              {vault.source === "file" && <Action.Push title={t("Save Current Data as a Sync File", "保存当前数据为同步文件")} icon={Icon.SaveDocument} target={<CreateSourceForm />} />}
               <Action title={t("Use File or Local Vault from Extension Preferences", "改用扩展设置选择的文件或本地库")} icon={Icon.ArrowCounterClockwise} onAction={() => void clearCreatedSource()} />
               {vault.source === "file" && vault.needsCreate && (
                 <Action
@@ -216,37 +198,6 @@ export default function ManageData() {
 
       <List.Section title={t("Import & Export", "导入导出")}>
         <List.Item
-          icon={Icon.Camera}
-          title={t("Scan Screenshot", "截图识码")}
-          subtitle={t("Capture and scan QR or migration codes", "截屏识别二维码或迁移码")}
-          actions={<ActionPanel><Action.Push title={t("Scan Screenshot", "截图识码")} icon={Icon.Camera} target={<ScanQr />} /></ActionPanel>}
-        />
-        <List.Item
-          icon={Icon.Download}
-          title={t("Import from Clipboard", "从剪贴板导入")}
-          subtitle={t("Supports otpauth://, Google migration codes and goose-2fa JSON backups", "支持 otpauth://、Google 迁移码与 goose-2fa JSON 备份")}
-          actions={
-            <ActionPanel>
-              <Action
-                title={t("Import from Clipboard", "从剪贴板导入")}
-                icon={Icon.Download}
-                onAction={async () => {
-                  const text = await Clipboard.readText();
-                  if (!text) {
-                    await showToast({ style: Toast.Style.Failure, title: t("Clipboard contains no text", "剪贴板没有文本") });
-                    return;
-                  }
-                  if (!previewImport(text, getVaultState())) {
-                    await showToast({ style: Toast.Style.Failure, title: t("Could not parse clipboard content", "无法解析剪贴板内容") });
-                    return;
-                  }
-                  push(<ImportPreview text={text} />);
-                }}
-              />
-            </ActionPanel>
-          }
-        />
-        <List.Item
           icon={Icon.Upload}
           title={t("Import from File", "从文件导入")}
           actions={
@@ -317,85 +268,6 @@ function AccountItem({
   );
 }
 
-function AccountForm({ mode, account }: { mode: "create" | "edit"; account?: AccountData }) {
-  const { pop } = useNavigation();
-  return (
-    <Form
-      navigationTitle={mode === "create" ? t("Add Account", "添加账户") : t("Edit Account", "编辑账户")}
-      actions={
-        <ActionPanel>
-          <Action.SubmitForm
-            title={mode === "create" ? t("Add", "添加") : t("Save", "保存")}
-            onSubmit={async (values: FormValues) => {
-              if (mode === "create") {
-                const input = normalizeNewAccountInput({
-                  name: values.name,
-                  issuer: values.issuer,
-                  secret: values.secret,
-                  type: values.type,
-                  digits: Number(values.digits),
-                  period: Number(values.period || 30),
-                  algorithm: values.algorithm,
-                  note: values.note,
-                  remark: values.remark,
-                });
-                if (!input) {
-                  await showToast({ style: Toast.Style.Failure, title: t("Invalid account details", "账户信息不合法"), message: t("Check the Base32 secret, digits and period.", "请检查 Base32 密钥、位数与周期。") });
-                  return;
-                }
-                const groupId = values.group === UNGROUPED ? null : values.group;
-                const ok = await commit((snapshot) => addAccounts(snapshot, [input], groupId ?? null), t("Account added", "已添加账户"));
-                if (ok) pop();
-                return;
-              }
-              if (!account) return;
-              const ok = await commit(
-                (snapshot) =>
-                  setAccountText(snapshot, account.id, {
-                    name: values.name || account.name,
-                    issuer: values.issuer ?? account.issuer,
-                    note: values.note,
-                    remark: values.remark,
-                  }),
-                t("Account saved", "已保存账户"),
-              );
-              if (ok) pop();
-            }}
-          />
-        </ActionPanel>
-      }
-    >
-      <Form.TextField id="name" title={t("Name", "名称")} defaultValue={account?.name} placeholder="alice@example.com" />
-      <Form.TextField id="issuer" title={t("Issuer", "发行方")} defaultValue={account?.issuer} placeholder="GitHub" />
-      {mode === "create" && (
-        <Form.TextField id="secret" title={t("Base32 Secret", "Base32 密钥")} placeholder="JBSWY3DPEHPK3PXP" />
-      )}
-      {mode === "create" && (
-        <Form.Dropdown id="type" title={t("Type", "类型")} defaultValue="totp">
-          <Form.Dropdown.Item value="totp" title={t("TOTP (time-based)", "TOTP（基于时间）")} />
-          <Form.Dropdown.Item value="hotp" title={t("HOTP (counter-based)", "HOTP（基于计数器）")} />
-        </Form.Dropdown>
-      )}
-      {mode === "create" && (
-        <Form.Dropdown id="digits" title={t("Digits", "位数")} defaultValue="6">
-          <Form.Dropdown.Item value="6" title={t("6 digits", "6 位")} />
-          <Form.Dropdown.Item value="8" title={t("8 digits", "8 位")} />
-        </Form.Dropdown>
-      )}
-      {mode === "create" && <Form.TextField id="period" title={t("Period (seconds)", "周期（秒）")} defaultValue="30" />}
-      {mode === "create" && (
-        <Form.Dropdown id="algorithm" title={t("Algorithm", "算法")} defaultValue="SHA-1">
-          <Form.Dropdown.Item value="SHA-1" title="SHA-1" />
-          <Form.Dropdown.Item value="SHA-256" title="SHA-256" />
-          <Form.Dropdown.Item value="SHA-512" title="SHA-512" />
-        </Form.Dropdown>
-      )}
-      <Form.TextArea id="note" title={t("Note", "备注")} defaultValue={account?.note} />
-      <Form.TextArea id="remark" title={t("Remark", "标记")} defaultValue={account?.remark} />
-    </Form>
-  );
-}
-
 function GroupForm({ mode, group }: { mode: "create" | "rename"; group?: VaultGroup }) {
   const { pop } = useNavigation();
   return (
@@ -421,7 +293,7 @@ function GroupForm({ mode, group }: { mode: "create" | "rename"; group?: VaultGr
   );
 }
 
-function ImportForm() {
+export function ImportForm() {
   const { push } = useNavigation();
   return (
     <Form
@@ -430,12 +302,16 @@ function ImportForm() {
         <ActionPanel>
           <Action.SubmitForm
             title={t("Import", "导入")}
-            onSubmit={async (values: FormValues) => {
-              const target = normalizePath(values.path ?? "");
-              if (!target) return;
+            onSubmit={async (values: { files?: string[] }) => {
+              const target = values.files?.[0];
+              if (!target) {
+                await showToast({ style: Toast.Style.Failure, title: t("Choose a backup file", "请选择备份文件") });
+                return;
+              }
               let text: string;
               try {
-                if (statSync(target).size > 5 * 1024 * 1024) throw new Error(t("Backup exceeds 5 MB", "备份文件超过 5MB"));
+                const file = statSync(target);
+                if (!file.isFile() || file.size > 5 * 1024 * 1024) throw new Error(t("Invalid backup file", "备份文件无效"));
                 text = readFileSync(target, "utf8");
               } catch {
                 await showToast({ style: Toast.Style.Failure, title: t("Could Not Read File", "无法读取文件"), message: t("Check the path, permissions and 5 MB limit.", "请检查文件路径、权限和 5MB 大小限制。") });
@@ -451,7 +327,7 @@ function ImportForm() {
         </ActionPanel>
       }
     >
-      <Form.TextField id="path" title={t("Backup File Path", "备份文件路径")} placeholder="~/Downloads/goose-2fa-backup.json" />
+      <Form.FilePicker id="files" title={t("Backup File", "备份文件")} allowMultipleSelection={false} />
     </Form>
   );
 }
@@ -528,8 +404,6 @@ function ExportForm() {
   );
 }
 
-const UNGROUPED = "__ungrouped__";
-
 function CreateSourceForm() {
   const { pop } = useNavigation();
   return <Form navigationTitle={t("Save Current Data as a Sync File", "保存当前数据为同步文件")} actions={<ActionPanel><Action.SubmitForm title={t("Save and Use This File", "保存并使用此文件")} onSubmit={async (values: { directory?: string[]; fileName?: string }) => {
@@ -561,14 +435,4 @@ function CreateSourceForm() {
 
 interface FormValues {
   name?: string;
-  issuer?: string;
-  secret?: string;
-  type?: "totp" | "hotp";
-  digits?: string;
-  period?: string;
-  algorithm?: "SHA-1" | "SHA-256" | "SHA-512";
-  note?: string;
-  remark?: string;
-  group?: string;
-  path?: string;
 }
