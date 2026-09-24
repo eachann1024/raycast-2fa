@@ -99,9 +99,13 @@ function CodeItem({ account, groups, code, remaining, enterAction, closeAfterCop
   account: AccountData; groups: VaultGroup[]; code: string; remaining: number; enterAction: "copy" | "paste"; closeAfterCopy: boolean;
 }) {
   const groupName = account.groupId ? groups.find((candidate) => candidate.id === account.groupId)?.name : undefined;
-  const subtitle = [account.issuer, groupName, account.remark].filter(Boolean).join(" · ");
+  const issuer = account.issuer.trim().replace(/^['"]|['"]$/g, "");
+  // ponytail: Common issuers get bundled monograms; unknown issuers use a neutral icon until a user-supplied icon feature exists.
+  const icon = ({ openai: "brand-openai.svg", google: "brand-google.svg", vercel: "brand-vercel.svg", xai: "brand-xai.svg" } as Record<string, string>)[issuer.toLowerCase()] ?? Icon.Circle;
+  const title = account.note || issuer || account.name;
+  const subtitle = [account.note ? issuer : null, account.name !== title ? account.name : null, groupName, account.remark].filter(Boolean).join(" · ");
   const accessories = [{ text: /^\d+$/.test(code) ? formatCode(code) : "…" }, account.type === "totp" ? { text: remaining >= 0 ? `${remaining}s` : "" } : { text: `HOTP #${account.counter}` }];
-  return <List.Item icon={account.type === "hotp" ? Icon.Hashtag : Icon.Key} title={account.note || account.name} subtitle={subtitle} keywords={[account.name, account.issuer, account.note ?? "", account.remark ?? ""].filter(Boolean)} accessories={accessories}
+  return <List.Item icon={icon} title={title} subtitle={subtitle} keywords={[account.name, account.issuer, account.note ?? "", account.remark ?? ""].filter(Boolean)} accessories={accessories}
     actions={<ActionPanel>
       <Action title={enterAction === "copy" ? t("Copy Code", "复制验证码") : t("Paste into Previous Field", "粘贴到上一个输入框")} icon={Icon.Clipboard} onAction={() => void deliverCode(account, code, enterAction, closeAfterCopy)} />
       <Action title={enterAction === "copy" ? t("Paste into Previous Field", "粘贴到上一个输入框") : t("Copy Code", "复制验证码")} icon={Icon.Clipboard} shortcut={{ modifiers: ["cmd"], key: "return" }} onAction={() => void deliverCode(account, code, enterAction === "copy" ? "paste" : "copy", closeAfterCopy)} />
