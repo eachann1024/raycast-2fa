@@ -1,12 +1,11 @@
 import { t } from "./i18n";
 import { Clipboard, PopToRootType, Toast, closeMainWindow, showHUD, showToast } from "@raycast/api";
 import type { AccountData } from "../../vendor/lib/types";
-import { typeText } from "./helper";
 import { consumeHotp, getVaultState } from "./vault-store";
 
 const deliveringHotp = new Set<string>();
 
-export type DeliveryMode = "copy" | "paste" | "type";
+export type DeliveryMode = "copy" | "paste";
 
 /** 复制 / 粘贴 / 真实输入。HOTP 必须先落盘递增，成功才允许把这个码交出去。 */
 export async function deliverCode(account: AccountData, code: string, mode: DeliveryMode, closeAfterCopy = true): Promise<boolean> {
@@ -33,15 +32,6 @@ export async function deliverCode(account: AccountData, code: string, mode: Deli
     } finally {
       deliveringHotp.delete(account.id);
     }
-  }
-  if (mode === "type") {
-    const result = await typeText(code);
-    if (!result.ok) {
-      await showToast({ style: Toast.Style.Failure, title: t("Typing Failed", "真实输入失败"), message: result.message });
-      return false;
-    }
-    await closeMainWindow();
-    return true;
   }
   if (mode === "paste") {
     try {

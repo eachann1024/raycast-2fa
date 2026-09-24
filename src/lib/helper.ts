@@ -1,4 +1,3 @@
-import { t } from "./i18n";
 import { environment } from "@raycast/api";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -11,18 +10,6 @@ const HELPER_NAME = "goose-2fa-helper";
 
 export function helperPath(): string {
   return path.join(environment.assetsPath, HELPER_NAME);
-}
-
-/** 真实键盘输入到最前台应用；缺少辅助功能权限时 helper 会返回明确原因。 */
-export async function typeText(text: string): Promise<{ ok: true } | { ok: false; message: string }> {
-  if (!text) return { ok: false, message: t("No code available to type.", "没有可输入的验证码。") };
-  try {
-    await execFileAsync(helperPath(), ["type", text]);
-    return { ok: true };
-  } catch (error) {
-    const stderr = (error as { stderr?: string }).stderr?.trim();
-    return { ok: false, message: stderr || t("Typing failed: grant Raycast Accessibility permission.", "真实输入失败：请确认已给 Raycast 辅助功能权限。") };
-  }
 }
 
 /** 用 Vision 识别图片里的二维码/条码，逐行返回 payload。 */

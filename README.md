@@ -1,8 +1,8 @@
 # Goose 2FA
 
-A local two-factor code manager for Raycast. Open **Codes** to search accounts, copy codes, or paste them into the previous app. Use the command's action panel to manage accounts, scan QR codes, and import or export a JSON backup.
+A local two-factor code manager for Raycast. Open **Codes** to search accounts, copy codes, or paste them into the previous app. First-time users see setup shortcuts; afterward, use the action panel to add an account or scan a screenshot/image. A scanned QR code opens an editable account form before saving.
 
-Choose a list or grid and configure Return behavior in the extension preferences. The interface is in English; account names may contain Chinese text.
+Configure Return behavior in Raycast extension preferences. The interface is in English; account names may contain Chinese text. Data sources and JSON backups are managed under **Settings & Data** in Raycast.
 
 ## Shared data source
 

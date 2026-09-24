@@ -17,7 +17,7 @@ if (process.platform !== "darwin") {
 mkdirSync(path.dirname(output), { recursive: true });
 execFileSync(
   "swiftc",
-  ["-O", "-o", output, source, "-framework", "Vision", "-framework", "AppKit"],
+  ["-O", "-o", output, source, "-framework", "Vision", "-framework", "ImageIO"],
   { stdio: "inherit" },
 );
 chmodSync(output, 0o755);
