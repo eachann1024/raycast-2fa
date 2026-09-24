@@ -5,7 +5,7 @@ import { buildGroupTallies, filterByGroup, UNGROUPED_KEY } from "../vendor/lib/g
 import { formatCode } from "../vendor/lib/otp";
 import { filterAccounts } from "../vendor/lib/search";
 import type { AccountData, VaultGroup } from "../vendor/lib/types";
-import { syncStatus, t } from "./lib/i18n";
+import { t } from "./lib/i18n";
 import { commit } from "./lib/commit";
 import { deliverCode } from "./lib/deliver";
 import { useOtpCodes } from "./lib/use-otp";
@@ -64,18 +64,6 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
       <Action.Push title={t("Open Settings & Data", "打开设置与数据")} icon={Icon.Gear} target={<ManageData />} />
     </ActionPanel>
   );
-  const sourceActions = (
-    <ActionPanel>
-      <Action title={t("Reload Data Source", "重新读取数据源文件")} icon={Icon.ArrowClockwise} onAction={() => void refreshVault()} />
-      <Action.Push title={t("Open Settings & Data", "打开设置与数据")} icon={Icon.Gear} target={<ManageData />} />
-    </ActionPanel>
-  );
-  const gridSourceActions = (
-    <ActionPanel>
-      <Action.Push title={t("Open Settings & Data", "打开设置与数据")} icon={Icon.Gear} target={<ManageData />} />
-      <Action title={t("Reload Data Source", "重新读取数据源文件")} icon={Icon.ArrowClockwise} onAction={() => void refreshVault()} />
-    </ActionPanel>
-  );
 
   if (preferences.viewMode === "grid") {
     return (
@@ -95,6 +83,7 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
           </Grid.Dropdown>
         }
       >
+        <Grid.EmptyView title={t("No Accounts", "暂无账户")} actions={<ActionPanel><Action.Push title={t("Open Settings & Data", "打开设置与数据")} icon={Icon.Gear} target={<ManageData />} /></ActionPanel>} />
         {vault.message && (
           <Grid.Section title={t("Action Required", "需要处理")}>
             <Grid.Item content={Icon.Warning} title={t("Data Source", "数据源")} subtitle={vault.message} actions={issueActions} />
@@ -115,14 +104,6 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
               />
             );
           })}
-        </Grid.Section>
-        <Grid.Section title={t("Data Source", "数据源")}>
-          <Grid.Item
-            content={Icon.HardDrive}
-            title={t("Settings & Data", "设置与数据")}
-            subtitle={vault.source === "file" ? vault.filePath : t("Raycast Local Vault", "Raycast 本地库")}
-            actions={gridSourceActions}
-          />
         </Grid.Section>
       </Grid>
     );
@@ -147,6 +128,7 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
         </List.Dropdown>
       }
     >
+      <List.EmptyView title={t("No Accounts", "暂无账户")} actions={<ActionPanel><Action.Push title={t("Open Settings & Data", "打开设置与数据")} icon={Icon.Gear} target={<ManageData />} /></ActionPanel>} />
       {vault.message ? (
         <List.Section title={t("Action Required", "需要处理")}>
           <List.Item
@@ -155,11 +137,6 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
             subtitle={vault.message}
             actions={issueActions}
           />
-        </List.Section>
-      ) : null}
-      {vault.notice ? (
-        <List.Section title={t("Status", "状态")}>
-          <List.Item icon={Icon.CheckCircle} title={vault.notice} subtitle={vault.source === "file" ? vault.filePath : t("Raycast Local Vault", "Raycast 本地库")} />
         </List.Section>
       ) : null}
       <List.Section title={t("Codes", "验证码")} subtitle={t(`${visible.length} accounts`, `${visible.length} 个账户`)}>
@@ -174,14 +151,6 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
             closeAfterCopy={preferences.closeAfterCopy ?? true}
           />
         ))}
-      </List.Section>
-      <List.Section title={t("Data Source", "数据源")}>
-        <List.Item
-          icon={Icon.HardDrive}
-          title={vault.source === "file" ? vault.filePath : t("No file configured (using Raycast Local Vault)", "未配置文件（使用 Raycast 本地库）")}
-          subtitle={t(`Sync status: ${syncStatus(vault.syncStatus)}`, `同步状态：${syncStatus(vault.syncStatus)}`)}
-          actions={sourceActions}
-        />
       </List.Section>
     </List>
   );
@@ -250,7 +219,6 @@ function CodeActions({ account, code, enterAction, closeAfterCopy }: {
         onAction={() => void deliverCode(account, code, "type")}
       />
       <ActionPanel.Section>
-        <Action title={t("Reload Data Source", "重新读取数据源文件")} icon={Icon.ArrowClockwise} onAction={() => void refreshVault()} />
         <Action
           title={t("Move to Trash", "移入回收站")}
           icon={Icon.Trash}

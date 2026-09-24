@@ -51,6 +51,12 @@ export default function ManageData() {
       </List.Section>
       <List.Section title={t("Data Source", "数据源")}>
         <List.Item
+          icon={Icon.SaveDocument}
+          title={t("Save Current Data as a Sync File", "保存当前数据为同步文件")}
+          subtitle={t("Choose a folder and filename; the new file becomes the data source", "选择目录和文件名；新文件将作为数据源")}
+          actions={<ActionPanel><Action.Push title={t("Save Current Data", "保存当前数据")} icon={Icon.SaveDocument} target={<CreateSourceForm />} /></ActionPanel>}
+        />
+        <List.Item
           icon={vault.source === "file" ? Icon.HardDrive : Icon.Desktop}
           title={vault.source === "file" ? vault.filePath : t("No file configured; using Raycast Local Vault", "未配置文件，使用 Raycast 本地库")}
           subtitle={vault.message ?? vault.notice ?? t(`Sync status: ${syncStatus(vault.syncStatus)}`, `同步状态：${syncStatus(vault.syncStatus)}`)}
@@ -63,7 +69,7 @@ export default function ManageData() {
                 onAction={() => void refreshVault()}
               />
               <Action title={t("Open Extension Preferences", "打开扩展设置")} icon={Icon.Gear} onAction={openExtensionPreferences} />
-              <Action.Push title={t("Create Data Source in Folder", "指定目录新建数据源")} icon={Icon.NewDocument} target={<CreateSourceForm />} />
+              <Action.Push title={t("Save Current Data as a Sync File", "保存当前数据为同步文件")} icon={Icon.SaveDocument} target={<CreateSourceForm />} />
               <Action title={t("Use File or Local Vault from Extension Preferences", "改用扩展设置选择的文件或本地库")} icon={Icon.ArrowCounterClockwise} onAction={() => void clearCreatedSource()} />
               {vault.source === "file" && vault.needsCreate && (
                 <Action
@@ -526,7 +532,7 @@ const UNGROUPED = "__ungrouped__";
 
 function CreateSourceForm() {
   const { pop } = useNavigation();
-  return <Form navigationTitle={t("Create Data Source at Location", "指定位置新建数据源")} actions={<ActionPanel><Action.SubmitForm title={t("Create and Use This File", "新建并使用此文件")} onSubmit={async (values: { directory?: string[]; fileName?: string }) => {
+  return <Form navigationTitle={t("Save Current Data as a Sync File", "保存当前数据为同步文件")} actions={<ActionPanel><Action.SubmitForm title={t("Save and Use This File", "保存并使用此文件")} onSubmit={async (values: { directory?: string[]; fileName?: string }) => {
     const directory = values.directory?.[0];
     const name = values.fileName?.trim() || "goose-2fa.json";
     if (!directory || !path.isAbsolute(directory) || !/^[^/\\\0]+\.json$/i.test(name)) {
