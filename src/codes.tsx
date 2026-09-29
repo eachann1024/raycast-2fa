@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, List, LocalStorage, Toast, getPreferenceValues, showToast } from "@raycast/api";
+import { Action, ActionPanel, Icon, Keyboard, List, LocalStorage, Toast, getPreferenceValues, openExtensionPreferences, showToast } from "@raycast/api";
 import { useEffect, useMemo, useState } from "react";
 import type { LaunchProps } from "@raycast/api";
 import { formatCode } from "../vendor/lib/otp";
@@ -19,11 +19,11 @@ const ONBOARDED_KEY = "goose-2fa-onboarded";
 function ManageActions() {
   return <>
     <ActionPanel.Section title={t("Add Accounts", "添加账户")}>
-      <Action.Push title={t("Add Account Manually", "手动添加账户")} icon={Icon.Plus} target={<AccountForm mode="create" />} />
-      <Action.Push title={t("Scan Screenshot", "截屏识码")} icon={Icon.Camera} target={<ScanQr />} />
-      <Action.Push title={t("Scan Image", "从图片识码")} icon={Icon.Image} target={<ScanQr source="image" />} />
+      <Action.Push title={t("Paste Secret to Add Account", "粘贴密钥添加账户")} icon={Icon.Plus} shortcut={Keyboard.Shortcut.Common.New} target={<AccountForm mode="create" />} />
+      <Action.Push title={t("Scan Screenshot", "截屏识码")} icon={Icon.Camera} shortcut={{ modifiers: ["cmd"], key: "s" }} target={<ScanQr />} />
+      <Action.Push title={t("Scan Image", "从图片识码")} icon={Icon.Image} shortcut={{ modifiers: ["cmd", "shift"], key: "s" }} target={<ScanQr source="image" />} />
     </ActionPanel.Section>
-    <Action.Push title={t("Open Settings & Data", "打开设置与数据")} icon={Icon.Gear} target={<ManageData />} />
+    <Action title={t("Open Extension Preferences", "打开扩展设置")} icon={Icon.Gear} onAction={openExtensionPreferences} />
   </>;
 }
 
@@ -64,7 +64,7 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
   const welcome = vault.status === "ready" && onboarded === false && !vault.accounts.length && !vault.groups.length && !vault.trash.length && !vault.message && !query;
   const issueActions = (
     <ActionPanel>
-      <Action title={t("Reload Data Source", "重新读取数据源文件")} icon={Icon.ArrowClockwise} onAction={() => void refreshVault()} />
+      <Action title={t("Reload Data Source", "重新读取数据源文件")} icon={Icon.ArrowClockwise} shortcut={Keyboard.Shortcut.Common.Refresh} onAction={() => void refreshVault()} />
       {vault.lockHeld !== null && <Action title={t("Remove Stale Lock (ensure no other client is writing)", "清理残留锁文件（确认没有其他端在写）")} icon={Icon.LockUnlocked} style={Action.Style.Destructive} onAction={async () => {
         const removed = await clearSyncLock();
         await showToast(removed
@@ -81,13 +81,13 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
       <List.Item icon={Icon.Warning} title={vault.source === "file" ? t("Data Source File", "数据源文件") : t("Local Vault", "本地库")} subtitle={vault.message} actions={issueActions} />
     </List.Section>}
     {welcome && <List.Section title={t("Get Started", "首次使用 · 快捷操作")}>
-      <List.Item icon={Icon.Plus} title={t("Add Account", "添加账户")} subtitle={t("Enter a secret manually", "手动输入密钥")} actions={<ActionPanel><Action.Push title={t("Add Account", "添加账户")} icon={Icon.Plus} target={<AccountForm mode="create" />} /></ActionPanel>} />
+      <List.Item icon={Icon.Plus} title={t("Add Account", "添加账户")} subtitle={t("Paste a secret key", "粘贴密钥")} actions={<ActionPanel><Action.Push title={t("Paste Secret to Add Account", "粘贴密钥添加账户")} icon={Icon.Plus} shortcut={Keyboard.Shortcut.Common.New} target={<AccountForm mode="create" />} /></ActionPanel>} />
       <List.Item icon={Icon.Download} title={t("Import Account", "导入账户")} subtitle={t("Screenshot, image or JSON", "截屏 / 图片 / JSON")} actions={<ActionPanel>
-        <Action.Push title={t("Scan Screenshot", "截屏识码")} icon={Icon.Camera} target={<ScanQr />} />
-        <Action.Push title={t("Scan Image", "从图片识码")} icon={Icon.Image} target={<ScanQr source="image" />} />
+        <Action.Push title={t("Scan Screenshot", "截屏识码")} icon={Icon.Camera} shortcut={{ modifiers: ["cmd"], key: "s" }} target={<ScanQr />} />
+        <Action.Push title={t("Scan Image", "从图片识码")} icon={Icon.Image} shortcut={{ modifiers: ["cmd", "shift"], key: "s" }} target={<ScanQr source="image" />} />
         <Action.Push title={t("Import JSON Backup", "导入 JSON 备份")} icon={Icon.Upload} target={<ImportForm />} />
       </ActionPanel>} />
-      <List.Item icon={Icon.Gear} title={t("Open Raycast Settings", "打开 Raycast 设置")} subtitle={t("Local vault, sync file and backups", "本地库、同步文件、备份")} actions={<ActionPanel><Action.Push title={t("Open Settings & Data", "打开设置与数据")} icon={Icon.Gear} target={<ManageData />} /></ActionPanel>} />
+      <List.Item icon={Icon.Gear} title={t("Open Extension Preferences", "打开扩展设置")} subtitle={t("Configure preferences and sync", "配置偏好与同步选项")} actions={<ActionPanel><Action title={t("Open Extension Preferences", "打开扩展设置")} icon={Icon.Gear} onAction={openExtensionPreferences} /></ActionPanel>} />
     </List.Section>}
     <List.Section title={t("Codes", "验证码")} subtitle={t(`${visible.length} accounts`, `${visible.length} 个账户`)}>
       {visible.map((account) => <CodeItem key={account.id} account={account} groups={vault.groups} code={codes[account.id]?.code ?? "------"} remaining={codes[account.id]?.remaining ?? -1} enterAction={preferences.enterAction ?? "copy"} closeAfterCopy={preferences.closeAfterCopy ?? true} />)}
@@ -109,9 +109,10 @@ function CodeItem({ account, groups, code, remaining, enterAction, closeAfterCop
     actions={<ActionPanel>
       <Action title={enterAction === "copy" ? t("Copy Code", "复制验证码") : t("Paste into Previous Field", "粘贴到上一个输入框")} icon={Icon.Clipboard} onAction={() => void deliverCode(account, code, enterAction, closeAfterCopy)} />
       <Action title={enterAction === "copy" ? t("Paste into Previous Field", "粘贴到上一个输入框") : t("Copy Code", "复制验证码")} icon={Icon.Clipboard} shortcut={{ modifiers: ["cmd"], key: "return" }} onAction={() => void deliverCode(account, code, enterAction === "copy" ? "paste" : "copy", closeAfterCopy)} />
+      <Action.Push title={t("Edit Account", "编辑账户")} icon={Icon.Pencil} shortcut={Keyboard.Shortcut.Common.Edit} target={<AccountForm mode="edit" account={account} />} />
       <ManageActions />
       <ActionPanel.Section>
-        <Action title={t("Move to Trash", "移入回收站")} icon={Icon.Trash} style={Action.Style.Destructive} onAction={() => void commit((snapshot) => moveToTrash(snapshot, account.id), t("Moved to Trash", "已移入回收站"))} />
+        <Action title={t("Move to Trash", "移入回收站")} icon={Icon.Trash} shortcut={Keyboard.Shortcut.Common.Remove} style={Action.Style.Destructive} onAction={() => void commit((snapshot) => moveToTrash(snapshot, account.id), t("Moved to Trash", "已移入回收站"))} />
       </ActionPanel.Section>
     </ActionPanel>} />;
 }

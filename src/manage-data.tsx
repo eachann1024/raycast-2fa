@@ -3,6 +3,7 @@ import {
   ActionPanel,
   Form,
   Icon,
+  Keyboard,
   List,
   Toast,
   openExtensionPreferences,
@@ -142,10 +143,11 @@ export default function ManageData() {
             subtitle={t(`${vault.accounts.filter((account) => account.groupId === group.id).length} accounts`, `${vault.accounts.filter((account) => account.groupId === group.id).length} 个账户`)}
             actions={
               <ActionPanel>
-                <Action title={t("Rename Group", "重命名分组")} icon={Icon.Pencil} onAction={() => push(<GroupForm mode="rename" group={group} />)} />
+                <Action title={t("Rename Group", "重命名分组")} icon={Icon.Pencil} shortcut={Keyboard.Shortcut.Common.Edit} onAction={() => push(<GroupForm mode="rename" group={group} />)} />
                 <Action
                   title={t("Delete Group (accounts become ungrouped)", "删除分组（账户回到未分组）")}
                   icon={Icon.Trash}
+                  shortcut={Keyboard.Shortcut.Common.Remove}
                   style={Action.Style.Destructive}
                   onAction={() => void commit((snapshot) => removeGroup(snapshot, group.id), t("Group deleted", "已删除分组"))}
                 />
@@ -238,7 +240,7 @@ function AccountItem({
       accessories={[{ text: account.type.toUpperCase() }]}
       actions={
         <ActionPanel>
-          <Action title={t("Edit Note & Name", "编辑备注与名称")} icon={Icon.Pencil} onAction={() => push(<AccountForm mode="edit" account={account} />)} />
+          <Action title={t("Edit Note & Name", "编辑备注与名称")} icon={Icon.Pencil} shortcut={Keyboard.Shortcut.Common.Edit} onAction={() => push(<AccountForm mode="edit" account={account} />)} />
           <ActionPanel.Section title={t("Move to Group", "移动到分组")}>
             <Action
               title={t("Ungrouped", "未分组")}
@@ -258,6 +260,7 @@ function AccountItem({
             <Action
               title={t("Move to Trash", "移入回收站")}
               icon={Icon.Trash}
+              shortcut={Keyboard.Shortcut.Common.Remove}
               style={Action.Style.Destructive}
               onAction={() => void commit((snapshot) => moveToTrash(snapshot, account.id), t("Moved to Trash", "已移入回收站"))}
             />

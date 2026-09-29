@@ -7,6 +7,13 @@ import { t } from "./lib/i18n";
 import { addAccounts, setAccountText } from "./lib/vault-ops";
 import { getVaultState } from "./lib/vault-store";
 
+function nextAccountName(existingNames: string[]): string {
+  const names = new Set(existingNames);
+  let index = 1;
+  while (names.has(`Account ${index}`) || names.has(`账户 ${index}`)) index++;
+  return t(`Account ${index}`, `账户 ${index}`);
+}
+
 interface FormValues {
   name?: string;
   issuer?: string;
@@ -26,19 +33,13 @@ export default function AccountForm({ mode, account, initial }: { mode: "create"
       navigationTitle={initial ? t("Edit Scanned Account", "编辑扫描结果") : mode === "create" ? t("Add Account", "添加账户") : t("Edit Account", "编辑账户")}
       actions={<ActionPanel><Action.SubmitForm title={t("Save Account", "保存账户")} onSubmit={async (values: FormValues) => {
         if (mode === "create") {
+          const accounts = getVaultState().accounts;
+          const name = initial?.name ?? nextAccountName(accounts.map((existing) => existing.name));
           const input = normalizeNewAccountInput({
-            name: values.name,
-            issuer: values.issuer,
+            ...initial,
+            name,
+            issuer: initial?.issuer ?? "",
             secret: values.secret,
-            type: values.type,
-            digits: Number(values.digits),
-            period: Number(values.period || 30),
-            algorithm: values.algorithm,
-            counter: initial?.counter ?? 0,
-            originalName: initial?.originalName,
-            groupId: initial?.groupId,
-            note: values.note,
-            remark: values.remark,
           });
           if (!input) {
             await showToast({ style: Toast.Style.Failure, title: t("Invalid account details", "账户信息不合法"), message: t("Check the Base32 secret, digits and period.", "请检查 Base32 密钥、位数与周期。") });
@@ -65,25 +66,15 @@ export default function AccountForm({ mode, account, initial }: { mode: "create"
         if (ok) pop();
       }} /></ActionPanel>}
     >
-      <Form.TextField id="name" title={t("Name", "名称")} defaultValue={account?.name ?? initial?.name} placeholder="alice@example.com" />
-      <Form.TextField id="issuer" title={t("Issuer", "发行方")} defaultValue={account?.issuer ?? initial?.issuer} placeholder="GitHub" />
-      {mode === "create" && <Form.PasswordField id="secret" title={t("Base32 Secret", "Base32 密钥")} defaultValue={initial?.secret} />}
-      {mode === "create" && <Form.Dropdown id="type" title={t("Type", "类型")} defaultValue={initial?.type ?? "totp"}>
-        <Form.Dropdown.Item value="totp" title={t("TOTP (time-based)", "TOTP（基于时间）")} />
-        <Form.Dropdown.Item value="hotp" title={t("HOTP (counter-based)", "HOTP（基于计数器）")} />
-      </Form.Dropdown>}
-      {mode === "create" && <Form.Dropdown id="digits" title={t("Digits", "位数")} defaultValue={String(initial?.digits ?? 6)}>
-        <Form.Dropdown.Item value="6" title={t("6 digits", "6 位")} />
-        <Form.Dropdown.Item value="8" title={t("8 digits", "8 位")} />
-      </Form.Dropdown>}
-      {mode === "create" && <Form.TextField id="period" title={t("Period (seconds)", "周期（秒）")} defaultValue={String(initial?.period ?? 30)} />}
-      {mode === "create" && <Form.Dropdown id="algorithm" title={t("Algorithm", "算法")} defaultValue={initial?.algorithm ?? "SHA-1"}>
-        <Form.Dropdown.Item value="SHA-1" title="SHA-1" />
-        <Form.Dropdown.Item value="SHA-256" title="SHA-256" />
-        <Form.Dropdown.Item value="SHA-512" title="SHA-512" />
-      </Form.Dropdown>}
-      <Form.TextArea id="note" title={t("Note", "备注")} defaultValue={account?.note ?? initial?.note} />
-      <Form.TextArea id="remark" title={t("Remark", "标记")} defaultValue={account?.remark ?? initial?.remark} />
+      {mode === "create" ? <>
+        <Form.PasswordField id="secret" title={t("Base32 Secret", "Base32 密钥")} defaultValue={initial?.secret} />
+        <Form.Description text={t("Paste your secret key. The account will use the default settings.", "粘贴密钥即可，账户将使用默认设置。")} />
+      </> : <>
+        <Form.TextField id="name" title={t("Name", "名称")} defaultValue={account?.name} placeholder="alice@example.com" />
+        <Form.TextField id="issuer" title={t("Issuer", "发行方")} defaultValue={account?.issuer} placeholder="GitHub" />
+        <Form.TextArea id="note" title={t("Note", "备注")} defaultValue={account?.note} />
+        <Form.TextArea id="remark" title={t("Remark", "标记")} defaultValue={account?.remark} />
+      </>}
     </Form>
   );
 }
