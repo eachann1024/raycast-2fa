@@ -29,11 +29,11 @@ import {
   restoreFromTrash,
   setAccountGroup,
 } from "./lib/vault-ops";
-import { clearCreatedSource, createDataSource, clearSyncLock, getVaultState, refreshVault, resetLocalVault, resolveConflict, selectCreatedSource, useVault } from "./lib/vault-store";
+import { clearCreatedSource, createDataSource, clearSyncLock, getVaultState, refreshVault, resetLocalVault, resolveConflict, selectCreatedSource, useVaultSnapshot } from "./lib/vault-store";
 import AccountForm from "./account-form";
 
 export default function ManageData() {
-  const vault = useVault();
+  const vault = useVaultSnapshot();
   const { push } = useNavigation();
 
   return (

@@ -104,7 +104,7 @@ function messageForRead(read: Exclude<VaultFileRead, { status: "ok" }>): string 
   }
 }
 
-function useVaultSnapshot(): VaultState {
+export function useVaultSnapshot(): VaultState {
   const [snapshot, setSnapshot] = useState(state);
   useEffect(() => {
     const listener = () => setSnapshot(state);
@@ -129,6 +129,8 @@ export async function loadVault(): Promise<void> {
     return;
   }
   const filePath = selected ? resolveVaultPath(selected) : "";
+  // A pushed view must not discard a pending choice or advance its baseline.
+  if (state.conflict && filePath === state.filePath) return;
   if (!filePath) {
     const read = await readLocalVault();
     baseline = null;
@@ -435,8 +437,8 @@ export async function resolveConflict(choice: "file" | "local"): Promise<void> {
   }
   const merged = {
     accounts: mergeExternalSnapshot(
-      { accounts: conflict.snapshot.accounts, groups: state.groups, trash: state.trash },
-      state.accounts,
+      { accounts: state.accounts, groups: state.groups, trash: state.trash },
+      conflict.snapshot.accounts,
     ).snapshot.accounts,
     groups: state.groups,
     trash: state.trash,
