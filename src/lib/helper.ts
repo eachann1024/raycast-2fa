@@ -1,4 +1,4 @@
-import { environment } from "@raycast/api";
+import { closeMainWindow, environment, PopToRootType } from "@raycast/api";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +25,8 @@ export async function detectBarcodes(imagePath: string): Promise<string[]> {
 export async function captureScreenToTempFile(): Promise<string | null> {
   const target = path.join(tmpdir(), `goose-2fa-scan-${process.pid}-${Date.now()}.png`);
   try {
+    // Keep the scanner and its results available when Raycast is reopened.
+    await closeMainWindow({ popToRootType: PopToRootType.Suspended });
     await execFileAsync("/usr/sbin/screencapture", ["-x", "-i", target]);
   } catch {
     return null;

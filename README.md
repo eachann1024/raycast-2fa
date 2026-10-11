@@ -12,6 +12,8 @@ Accounts are stored locally in Raycast by default. To use a shared data source, 
 
 ## QR scanner helper
 
+Screenshot scanning hides Raycast before opening the system capture tool. Reopen Raycast after capturing to continue with the scan results or account form; no change to Raycast's global "Pop to Root Search" setting is needed.
+
 The QR scanner uses a small Swift helper built locally from `swift/SyncHelper.swift` by `npm run build` on macOS; no additional download is required.
 
 ## Optional file-format compatibility
