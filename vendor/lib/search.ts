@@ -1,11 +1,11 @@
-import type { AccountData } from "./types";
+import type { AccountData, VaultGroup } from "./types";
 
 /**
  * 统一的账户匹配引擎：lowercase + 多关键字 AND。
- * 命中字段：issuer、name、remark、note。
+ * 命中字段：issuer、name、remark、note、group。
  * 空查询返回 true（全量）。
  */
-export function matchAccount(account: AccountData, query: string): boolean {
+export function matchAccount(account: AccountData, query: string, groupName = ""): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   const haystack = [
@@ -13,6 +13,7 @@ export function matchAccount(account: AccountData, query: string): boolean {
     account.name,
     account.remark ?? "",
     account.note ?? "",
+    groupName,
   ]
     .join(" ")
     .toLowerCase();
@@ -25,7 +26,9 @@ export function matchAccount(account: AccountData, query: string): boolean {
 export function filterAccounts(
   accounts: AccountData[],
   query: string,
+  groups: VaultGroup[] = [],
 ): AccountData[] {
   if (!query.trim()) return accounts;
-  return accounts.filter((a) => matchAccount(a, query));
+  const names = new Map(groups.map((group) => [group.id, group.name]));
+  return accounts.filter((account) => matchAccount(account, query, names.get(account.groupId ?? "") ?? ""));
 }
