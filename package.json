@@ -25,8 +25,8 @@
         "otp",
         "totp",
         "hotp",
-        "验证码",
-        "动态口令",
+        "\u9a8c\u8bc1\u7801",
+        "\u52a8\u6001\u53e3\u4ee4",
         "goose"
       ],
       "arguments": [
@@ -76,8 +76,8 @@
     }
   ],
   "scripts": {
-    "build": "node scripts/build-helper.mjs && ray build -e dist",
-    "dev": "node scripts/build-helper.mjs && ray develop",
+    "build": "ray build -e dist",
+    "dev": "ray develop",
     "lint": "ray lint",
     "test": "bun test"
   },
