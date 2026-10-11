@@ -69,7 +69,6 @@ export default function ScanQr({ source = "screen", result }: { source?: "screen
     })();
     return () => { active = false; };
     // ponytail: one capture per mounted scanner; a new scan is a new navigation, not a reactive effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const singleInput = entries.length === 1 ? entries[0] : undefined;

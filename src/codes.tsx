@@ -20,9 +20,10 @@ function ManageActions() {
   return <>
     <ActionPanel.Section title={t("Add Accounts", "添加账户")}>
       <Action.Push title={t("Paste Secret to Add Account", "粘贴密钥添加账户")} icon={Icon.Plus} shortcut={Keyboard.Shortcut.Common.New} target={<AccountForm mode="create" />} />
-      <Action.Push title={t("Scan Screenshot", "截屏识码")} icon={Icon.Camera} shortcut={{ modifiers: ["cmd"], key: "s" }} target={<ScanQr />} />
-      <Action.Push title={t("Scan Image", "从图片识码")} icon={Icon.Image} shortcut={{ modifiers: ["cmd", "shift"], key: "s" }} target={<ScanQr source="image" />} />
+      <Action.Push title={t("Scan Screenshot", "截屏识码")} icon={Icon.Camera} shortcut={Keyboard.Shortcut.Common.Save} target={<ScanQr />} />
+      <Action.Push title={t("Scan Image", "从图片识码")} icon={Icon.Image} shortcut={Keyboard.Shortcut.Common.Duplicate} target={<ScanQr source="image" />} />
     </ActionPanel.Section>
+    <Action.Push title={t("Open Settings & Data", "打开设置与数据")} icon={Icon.Gear} target={<ManageData />} />
     <Action title={t("Open Extension Preferences", "打开扩展设置")} icon={Icon.Gear} onAction={openExtensionPreferences} />
   </>;
 }
@@ -92,8 +93,8 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
     {welcome && <List.Section title={t("Get Started", "首次使用 · 快捷操作")}>
       <List.Item icon={Icon.Plus} title={t("Add Account", "添加账户")} subtitle={t("Paste a secret key", "粘贴密钥")} actions={<ActionPanel><Action.Push title={t("Paste Secret to Add Account", "粘贴密钥添加账户")} icon={Icon.Plus} shortcut={Keyboard.Shortcut.Common.New} target={<AccountForm mode="create" />} /></ActionPanel>} />
       <List.Item icon={Icon.Download} title={t("Import Account", "导入账户")} subtitle={t("Screenshot, image or JSON", "截屏 / 图片 / JSON")} actions={<ActionPanel>
-        <Action.Push title={t("Scan Screenshot", "截屏识码")} icon={Icon.Camera} shortcut={{ modifiers: ["cmd"], key: "s" }} target={<ScanQr />} />
-        <Action.Push title={t("Scan Image", "从图片识码")} icon={Icon.Image} shortcut={{ modifiers: ["cmd", "shift"], key: "s" }} target={<ScanQr source="image" />} />
+        <Action.Push title={t("Scan Screenshot", "截屏识码")} icon={Icon.Camera} shortcut={Keyboard.Shortcut.Common.Save} target={<ScanQr />} />
+        <Action.Push title={t("Scan Image", "从图片识码")} icon={Icon.Image} shortcut={Keyboard.Shortcut.Common.Duplicate} target={<ScanQr source="image" />} />
         <Action.Push title={t("Import JSON Backup", "导入 JSON 备份")} icon={Icon.Upload} target={<ImportForm />} />
       </ActionPanel>} />
       <List.Item icon={Icon.Gear} title={t("Open Extension Preferences", "打开扩展设置")} subtitle={t("Configure preferences and sync", "配置偏好与同步选项")} actions={<ActionPanel><Action title={t("Open Extension Preferences", "打开扩展设置")} icon={Icon.Gear} onAction={openExtensionPreferences} /></ActionPanel>} />
