@@ -1,5 +1,5 @@
-import { Action, ActionPanel, Icon, Keyboard, List, LocalStorage, Toast, getPreferenceValues, openExtensionPreferences, showToast } from "@raycast/api";
-import { useEffect, useMemo, useState } from "react";
+import { Action, ActionPanel, Icon, Keyboard, List, LocalStorage, Toast, getPreferenceValues, openExtensionPreferences, showToast, useNavigation } from "@raycast/api";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LaunchProps } from "@raycast/api";
 import { formatCode } from "../vendor/lib/otp";
 import { filterAccounts } from "../vendor/lib/search";
@@ -12,7 +12,7 @@ import { useOtpCodes } from "./lib/use-otp";
 import { moveToTrash } from "./lib/vault-ops";
 import { clearSyncLock, refreshVault, useVault } from "./lib/vault-store";
 import ManageData, { ImportForm } from "./manage-data";
-import ScanQr from "./scan-qr";
+import ScanQr, { type ScanResult } from "./scan-qr";
 
 const ONBOARDED_KEY = "goose-2fa-onboarded";
 
@@ -27,15 +27,24 @@ function ManageActions() {
   </>;
 }
 
-export default function Codes(props: LaunchProps<{ arguments: { query?: string } }>) {
+export default function Codes(props: LaunchProps<{ arguments: { query?: string }; launchContext: { scanResult?: ScanResult } }>) {
   const preferences = getPreferenceValues<Preferences>();
   const vault = useVault();
+  const { push } = useNavigation();
+  const resumedScan = useRef<string | undefined>(undefined);
+  const scanResult = props.launchContext?.scanResult;
   const argQuery = props.arguments?.query?.trim() ?? "";
   const [query, setQuery] = useState(argQuery);
   const [quickDone, setQuickDone] = useState(false);
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
   const codes = useOtpCodes(vault.accounts);
   const visible = useMemo(() => filterAccounts(vault.accounts, query), [vault.accounts, query]);
+
+  useEffect(() => {
+    if (!scanResult || vault.status !== "ready" || resumedScan.current === scanResult.id) return;
+    resumedScan.current = scanResult.id;
+    push(<ScanQr source={scanResult.source} result={scanResult} />);
+  }, [scanResult, vault.status, push]);
 
   useEffect(() => {
     let active = true;
@@ -52,14 +61,14 @@ export default function Codes(props: LaunchProps<{ arguments: { query?: string }
   }, [vault.status, vault.accounts.length, vault.groups.length, vault.trash.length, onboarded]);
 
   useEffect(() => {
-    if (quickDone || !argQuery || vault.status === "loading" || visible.length !== 1) return;
+    if (scanResult || quickDone || !argQuery || vault.status === "loading" || visible.length !== 1) return;
     const account = visible[0];
     if (!account) return;
     const code = codes[account.id]?.code;
     if (!code || !/^\d+$/.test(code)) return;
     setQuickDone(true);
     void deliverCode(account, code, preferences.enterAction ?? "copy", preferences.closeAfterCopy ?? true);
-  }, [argQuery, vault.status, visible, codes, quickDone, preferences.enterAction, preferences.closeAfterCopy]);
+  }, [scanResult, argQuery, vault.status, visible, codes, quickDone, preferences.enterAction, preferences.closeAfterCopy]);
 
   const welcome = vault.status === "ready" && onboarded === false && !vault.accounts.length && !vault.groups.length && !vault.trash.length && !vault.message && !query;
   const issueActions = (
