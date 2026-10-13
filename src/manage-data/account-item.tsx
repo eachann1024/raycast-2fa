@@ -1,6 +1,7 @@
 import { Action, ActionPanel, Icon, Keyboard, List, type useNavigation } from "@raycast/api";
 import type { AccountData, VaultGroup } from "../../vendor/lib/types";
 import AccountForm from "../account-form";
+import { AccountExportAction } from "../account-export";
 import { commit } from "../lib/commit";
 import { t } from "../lib/i18n";
 import { moveToTrash, setAccountGroup } from "../lib/vault-ops";
@@ -24,6 +25,7 @@ export default function AccountItem({
       actions={
         <ActionPanel>
           <Action title={t("Edit Note & Name", "编辑备注与名称")} icon={Icon.Pencil} shortcut={Keyboard.Shortcut.Common.Edit} onAction={() => push(<AccountForm mode="edit" account={account} />)} />
+          <AccountExportAction accountId={account.id} />
           <ActionPanel.Section title={t("Move to Group", "移动到分组")}>
             <Action
               title={t("Ungrouped", "未分组")}

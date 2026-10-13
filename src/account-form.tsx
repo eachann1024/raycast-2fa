@@ -3,6 +3,7 @@ import { useState } from "react";
 import { deduplicateImports } from "../vendor/lib/data-transfer";
 import { normalizeNewAccountInput } from "../vendor/lib/account-validation";
 import type { AccountData, NewAccountInput } from "../vendor/lib/types";
+import { AccountExportAction } from "./account-export";
 import { commit } from "./lib/commit";
 import { t } from "./lib/i18n";
 import { addAccounts, setAccountText } from "./lib/vault-ops";
@@ -78,7 +79,7 @@ export default function AccountForm({ mode, account, initial }: { mode: "create"
           t("Account saved", "已保存账户"),
         );
         if (ok) pop();
-      }} /></ActionPanel>}
+      }} />{mode === "edit" && account && <AccountExportAction accountId={account.id} saved />}</ActionPanel>}
     >
       <Form.TextField id="name" title={t("Name", "名称")} defaultValue={initial?.name ?? account?.name} placeholder="alice@example.com" />
       <Form.TextField id="issuer" title={t("Issuer", "发行方")} defaultValue={initial?.issuer ?? account?.issuer} placeholder="GitHub" />

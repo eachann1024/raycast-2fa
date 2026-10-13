@@ -5,6 +5,7 @@ import { formatCode } from "../vendor/lib/otp";
 import { filterAccounts } from "../vendor/lib/search";
 import type { AccountData, VaultGroup } from "../vendor/lib/types";
 import AccountForm from "./account-form";
+import { AccountExportAction } from "./account-export";
 import { commit } from "./lib/commit";
 import { deliverCode } from "./lib/deliver";
 import { t } from "./lib/i18n";
@@ -120,6 +121,7 @@ function CodeItem({ account, groups, code, remaining, enterAction, closeAfterCop
       <Action title={enterAction === "copy" ? t("Copy Code", "复制验证码") : t("Paste into Previous Field", "粘贴到上一个输入框")} icon={Icon.Clipboard} onAction={() => void deliverCode(account, code, enterAction, closeAfterCopy)} />
       <Action title={enterAction === "copy" ? t("Paste into Previous Field", "粘贴到上一个输入框") : t("Copy Code", "复制验证码")} icon={Icon.Clipboard} shortcut={{ modifiers: ["cmd"], key: "return" }} onAction={() => void deliverCode(account, code, enterAction === "copy" ? "paste" : "copy", closeAfterCopy)} />
       <Action.Push title={t("Edit Account", "编辑账户")} icon={Icon.Pencil} shortcut={Keyboard.Shortcut.Common.Edit} target={<AccountForm mode="edit" account={account} />} />
+      <AccountExportAction accountId={account.id} />
       <ManageActions />
       <ActionPanel.Section>
         <Action title={t("Move to Trash", "移入回收站")} icon={Icon.Trash} shortcut={Keyboard.Shortcut.Common.Remove} style={Action.Style.Destructive} onAction={() => void commit((snapshot) => moveToTrash(snapshot, account.id), t("Moved to Trash", "已移入回收站"))} />
