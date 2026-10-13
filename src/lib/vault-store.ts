@@ -1,7 +1,7 @@
 import { t } from "./i18n";
 import { getPreferenceValues, LocalStorage } from "@raycast/api";
 import path from "node:path";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { exportAsSyncJson, type SyncSnapshot } from "../../vendor/lib/data-transfer";
 import type { AccountData, VaultGroup } from "../../vendor/lib/types";
 import {
@@ -27,14 +27,16 @@ const SOURCE_OVERRIDE_KEY = "goose-2fa-data-source-override";
 
 /** 界面新建文件时保存路径；用户后来修改扩展文件偏好时让新偏好优先。 */
 export async function selectCreatedSource(filePath: string): Promise<void> {
+  const generation = beginLoad();
   const preference = getPreferenceValues<Preferences>().dataFile || "";
-  await LocalStorage.setItem(SOURCE_OVERRIDE_KEY, JSON.stringify({ filePath, preference }));
-  await loadVault();
+  await changeSource(generation, () => LocalStorage.setItem(SOURCE_OVERRIDE_KEY, JSON.stringify({ filePath, preference })));
+  if (generation === sourceGeneration) await loadSelectedSource(generation);
 }
 
 export async function clearCreatedSource(): Promise<void> {
-  await LocalStorage.removeItem(SOURCE_OVERRIDE_KEY);
-  await loadVault();
+  const generation = beginLoad();
+  await changeSource(generation, () => LocalStorage.removeItem(SOURCE_OVERRIDE_KEY));
+  if (generation === sourceGeneration) await loadSelectedSource(generation);
 }
 
 export interface VaultState {
@@ -77,9 +79,51 @@ let state: VaultState = {
 };
 
 /** 最近一次已确认的磁盘内容；写前必须与它比对，不同则说明外部改过文件。 */
-let baseline: { content: string; stat: SyncFileStat } | null = null;
+type VaultBaseline = { content: string; stat: SyncFileStat } | null;
+let baseline: VaultBaseline = null;
+let sourceGeneration = 0;
+let sourceValid = false;
+let sourceChanges = Promise.resolve();
+// 按真实路径跟踪写入：切换到其它源不阻塞，返回同一源必须等旧写入结束再读取。
+const pendingWrites = new Map<string, Promise<void>>();
+
+interface SourceOperation {
+  generation: number;
+  filePath: string;
+  baseline: VaultBaseline;
+}
+
+function isCurrentSource(operation: SourceOperation): boolean {
+  return operation.generation === sourceGeneration && operation.filePath === state.filePath;
+}
+
+function beginLoad(): number {
+  const generation = ++sourceGeneration;
+  sourceValid = false;
+  setState({ status: "loading" });
+  return generation;
+}
+
+async function changeSource(generation: number, change: () => Promise<void>): Promise<void> {
+  const changed = sourceChanges.then(change);
+  // 路径选择按调用顺序保存；一次失败不能阻塞下一次选择。
+  sourceChanges = changed.catch(() => {});
+  try {
+    await changed;
+  } catch (error) {
+    if (generation === sourceGeneration) {
+      setState({ status: "ready", syncStatus: "error", message: t("Could not change the data source.", "无法更改数据源。") });
+    }
+    throw error;
+  }
+}
 
 const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
 
 function setState(patch: Partial<VaultState>): void {
   state = { ...state, ...patch };
@@ -105,34 +149,53 @@ function messageForRead(read: Exclude<VaultFileRead, { status: "ok" }>): string 
 }
 
 export function useVaultSnapshot(): VaultState {
-  const [snapshot, setSnapshot] = useState(state);
-  useEffect(() => {
-    const listener = () => setSnapshot(state);
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
-  }, []);
-  return snapshot;
+  return useSyncExternalStore(subscribe, getVaultState);
 }
 
 /** 读取数据源文件并以它为准；未配置路径时使用 Raycast 本地库。 */
 export async function loadVault(): Promise<void> {
+  await loadSelectedSource(beginLoad());
+}
+
+async function loadSelectedSource(generation: number): Promise<void> {
+  try {
+    await readSelectedSource(generation);
+  } catch (error) {
+    if (generation === sourceGeneration) {
+      setState({ status: "ready", syncStatus: "error", message: t("Could not load the data source.", "无法载入数据源。") });
+    }
+    throw error;
+  }
+}
+
+async function readSelectedSource(generation: number): Promise<void> {
+  await sourceChanges;
+  if (generation !== sourceGeneration) return;
   const preferences = getPreferenceValues<Preferences>();
   let selected = preferences.dataFile?.trim() || "";
   try {
     const override = JSON.parse((await LocalStorage.getItem<string>(SOURCE_OVERRIDE_KEY)) || "null") as { filePath?: unknown; preference?: unknown } | null;
     if (override && override.preference === (preferences.dataFile || "") && typeof override.filePath === "string") selected = override.filePath;
   } catch { /* 无效的路径偏好不会覆盖已选文件 */ }
+  if (generation !== sourceGeneration) return;
   if (selected && (!path.isAbsolute(normalizePath(selected)) || path.extname(selected).toLowerCase() !== ".json")) {
-    setState({ status: "ready", syncStatus: "error", message: t("Data source must be an absolute path to a .json file; existing data was not written.", "数据源须为绝对路径的 .json 文件；原有数据未写入。"), needsCreate: false });
+    baseline = null;
+    setState({ filePath: selected, source: "file", status: "ready", syncStatus: "error", message: t("Data source must be an absolute path to a .json file; existing data was not written.", "数据源须为绝对路径的 .json 文件；原有数据未写入。"), notice: null, needsCreate: false, lockHeld: null, conflict: null });
     return;
   }
   const filePath = selected ? resolveVaultPath(selected) : "";
+  await pendingWrites.get(filePath);
+  if (generation !== sourceGeneration) return;
   // A pushed view must not discard a pending choice or advance its baseline.
-  if (state.conflict && filePath === state.filePath) return;
+  if (state.conflict && filePath === state.filePath) {
+    sourceValid = true;
+    setState({ status: "ready" });
+    return;
+  }
   if (!filePath) {
     const read = await readLocalVault();
+    if (generation !== sourceGeneration) return;
+    sourceValid = true;
     baseline = null;
     if (read.status === "broken") {
       setState({
@@ -147,6 +210,7 @@ export async function loadVault(): Promise<void> {
         notice: null,
         needsCreate: false,
         localBroken: true,
+        lockHeld: null,
         conflict: null,
       });
       return;
@@ -161,6 +225,7 @@ export async function loadVault(): Promise<void> {
       notice: t("No data source file configured; using Raycast Local Vault.", "未配置数据源文件，使用 Raycast 本地库。"),
       needsCreate: false,
       localBroken: false,
+      lockHeld: null,
       conflict: null,
     });
     return;
@@ -168,6 +233,7 @@ export async function loadVault(): Promise<void> {
 
   const read = readVaultFile(filePath);
   if (read.status === "ok") {
+    sourceValid = true;
     const { snapshot, corrected } = mergeExternalSnapshot(read.snapshot, state.accounts);
     baseline = { content: read.content, stat: { mtimeMs: read.mtimeMs, size: read.size } };
     setState({
@@ -179,6 +245,8 @@ export async function loadVault(): Promise<void> {
       message: null,
       notice: corrected ? t("Data source corrected using the 30-day trash rule and HOTP counter floor.", "已按 30 天回收站规则与 HOTP 高水位纠正数据源文件。") : null,
       needsCreate: false,
+      localBroken: false,
+      lockHeld: null,
       conflict: null,
     });
     if (corrected) void persist(snapshot);
@@ -187,6 +255,8 @@ export async function loadVault(): Promise<void> {
 
   // 读不到/解析不了都不当成空库：保留当前数据（或本地库）并停止写入，等用户处理。
   const local = await readLocalVault();
+  if (generation !== sourceGeneration) return;
+  sourceValid = true;
   const fallback = state.accounts.length > 0
     ? { accounts: state.accounts, groups: state.groups, trash: state.trash }
     : (local.status === "ok" ? local.snapshot : { accounts: [], groups: [], trash: [] });
@@ -202,19 +272,25 @@ export async function loadVault(): Promise<void> {
     notice: null,
     needsCreate: missing,
     localBroken: local.status === "broken",
+    lockHeld: null,
     conflict: null,
   });
 }
 
 /** 手动重新读取数据源文件（以文件为准）。 */
 export async function refreshVault(): Promise<void> {
-  if (!state.filePath) {
+  if (!sourceValid || !state.filePath || state.status === "loading") {
     await loadVault();
     return;
   }
-  const read = readVaultFile(state.filePath);
+  const filePath = state.filePath;
+  const generation = beginLoad();
+  await pendingWrites.get(filePath);
+  if (generation !== sourceGeneration) return;
+  sourceValid = true;
+  const read = readVaultFile(filePath);
   if (read.status !== "ok") {
-    setState({ syncStatus: "error", message: messageForRead(read), conflict: null });
+    setState({ status: "ready", syncStatus: "error", message: messageForRead(read), conflict: null });
     return;
   }
   const { snapshot, corrected } = mergeExternalSnapshot(read.snapshot, state.accounts);
@@ -234,7 +310,7 @@ export async function refreshVault(): Promise<void> {
 /** 轮询数据源文件，自动载入外部改动；自身写入不回环。 */
 async function pollExternal(): Promise<void> {
   const path = state.filePath;
-  if (!path || state.syncStatus === "writing" || state.syncStatus === "conflict") return;
+  if (!sourceValid || state.status === "loading" || !path || pendingWrites.has(path) || state.syncStatus === "conflict") return;
   const read = readVaultFile(path);
   if (read.status !== "ok") {
     if (read.status === "missing" || read.status === "empty") {
@@ -266,33 +342,62 @@ async function persist(
   snapshot: SyncSnapshot,
   options: { allowCreate?: boolean; overwrite?: boolean; createOnly?: boolean } = {},
 ): Promise<boolean> {
-  if (state.syncStatus === "writing") return false;
-  if (!state.filePath) {
+  if (!sourceValid || state.status === "loading" || pendingWrites.has(state.filePath)) return false;
+  const operation: SourceOperation = { generation: sourceGeneration, filePath: state.filePath, baseline };
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  pendingWrites.set(operation.filePath, pending);
+  try {
+    const saved = await persistForSource(operation, snapshot, options);
+    return saved && isCurrentSource(operation);
+  } catch {
+    if (isCurrentSource(operation)) {
+      setState({ syncStatus: "error", message: operation.filePath
+        ? t("Could not write data source; existing file was not overwritten.", "写入数据源文件失败，原有文件未被覆盖。")
+        : t("Could not save the local vault.", "无法保存本地保险柜。"), notice: null });
+    }
+    return false;
+  } finally {
+    pendingWrites.delete(operation.filePath);
+    release();
+  }
+}
+
+async function persistForSource(
+  operation: SourceOperation,
+  snapshot: SyncSnapshot,
+  options: { allowCreate?: boolean; overwrite?: boolean; createOnly?: boolean } = {},
+): Promise<boolean> {
+  const publish = (patch: Partial<VaultState>) => {
+    if (isCurrentSource(operation)) setState(patch);
+  };
+  if (!operation.filePath) {
     if (state.localBroken && !options.allowCreate) {
-      setState({
+      publish({
         syncStatus: "error",
         message: t("Local Vault contains invalid data; writes are disabled. Explicitly rebuild it or use a data source file.", "本地库有无法解析的数据，已停止写入。请显式重建本地库或改用数据源文件。"),
         notice: null,
       });
       return false;
     }
-    setState({ syncStatus: "writing" });
+    publish({ syncStatus: "writing" });
     try {
       await writeLocalVault(snapshot);
-      setState({ ...snapshot, syncStatus: "success", message: null, notice: null, conflict: null, localBroken: false });
+      if (!isCurrentSource(operation)) return false;
+      publish({ ...snapshot, syncStatus: "success", message: null, notice: null, conflict: null, localBroken: false });
       return true;
     } catch {
-      setState({ syncStatus: "error", message: t("Could not save the local vault.", "无法保存本地保险柜。") });
+      publish({ syncStatus: "error", message: t("Could not save the local vault.", "无法保存本地保险柜。") });
       return false;
     }
   }
 
-  setState({ syncStatus: "writing", lockHeld: null });
-  const fresh = readVaultFile(state.filePath);
+  publish({ syncStatus: "writing", lockHeld: null });
+  const fresh = readVaultFile(operation.filePath);
   if (fresh.status !== "ok") {
     const missing = fresh.status === "missing" || fresh.status === "empty";
     if (!missing || !options.allowCreate) {
-      setState({
+      publish({
         syncStatus: "error",
         message: messageForRead(fresh),
         notice: null,
@@ -302,8 +407,8 @@ async function persist(
       return false;
     }
   } else if (!options.overwrite) {
-    if (!baseline) {
-      setState({
+    if (!operation.baseline) {
+      publish({
         syncStatus: "conflict",
         message: t("Data source has not been verified; writes are disabled. Reload it first.", "尚未确认过数据源文件内容，已停止写入。请先重新读取文件。"),
         notice: null,
@@ -311,8 +416,8 @@ async function persist(
       });
       return false;
     }
-    if (!isSameSyncContent(fresh.content, baseline.content)) {
-      setState({
+    if (!isSameSyncContent(fresh.content, operation.baseline.content)) {
+      publish({
         syncStatus: "conflict",
         message: t("Another app changed the data source. Your changes were not saved. Choose which version to keep.", "数据源文件已被其他程序修改，本次改动没有写入。请选择以哪边为准。"),
         notice: null,
@@ -324,11 +429,12 @@ async function persist(
 
   const serialized = exportAsSyncJson(snapshot.accounts, snapshot.groups, snapshot.trash);
   // 版本依据是逐字节内容，不是 mtime/size：锁内比对，外部一改就拒绝。
-  const expectedContent = !options.overwrite && baseline ? baseline.content : null;
-  const result = await writeVaultFile(state.filePath, serialized, expectedContent, options.createOnly, options.allowCreate);
+  const expectedContent = !options.overwrite && operation.baseline ? operation.baseline.content : null;
+  const result = await writeVaultFile(operation.filePath, serialized, expectedContent, options.createOnly, options.allowCreate);
+  if (!isCurrentSource(operation)) return false;
   if (result.status === "ok") {
     baseline = { content: serialized, stat: { mtimeMs: result.mtimeMs, size: result.size } };
-    setState({
+    publish({
       ...snapshot,
       syncStatus: "success",
       message: null,
@@ -340,20 +446,20 @@ async function persist(
     return true;
   }
   if (result.status === "conflict") {
-    const reread = readVaultFile(state.filePath);
+    const reread = readVaultFile(operation.filePath);
     if (reread.status === "ok") {
-      setState({
+      publish({
         syncStatus: "conflict",
         message: t("Another app changed the data source before saving. Your changes were not saved. Choose which version to keep.", "数据源文件在写入前被其他程序修改，本次改动没有写入。请选择以哪边为准。"),
         conflict: { snapshot: reread.snapshot, content: reread.content, stat: { mtimeMs: reread.mtimeMs, size: reread.size } },
       });
       return false;
     }
-    setState({ syncStatus: "error", message: messageForRead(reread), notice: null, conflict: null });
+    publish({ syncStatus: "error", message: messageForRead(reread), notice: null, conflict: null });
     return false;
   }
   const lock = result.status === "locked" ? parseSyncLockInfo(result.lockContent) : null;
-  setState({
+  publish({
     syncStatus: "error",
     message: result.status === "locked" ? lockMessage(lock) : t("Could not write data source; existing file was not overwritten.", "写入数据源文件失败，原有文件未被覆盖。"),
     notice: null,
@@ -392,7 +498,7 @@ export async function createDataSource(): Promise<boolean> {
 
 /** 用户显式清理残留锁文件；不会自动重试写入，避免在用户不知情时覆盖外部改动。 */
 export async function clearSyncLock(): Promise<boolean> {
-  if (!state.filePath) return false;
+  if (state.status === "loading" || pendingWrites.has(state.filePath) || !sourceValid || !state.filePath) return false;
   const removed = clearVaultLock(state.filePath);
   setState({ lockHeld: null, syncStatus: "idle", ...(removed ? { message: null } : {}) });
   return removed;
@@ -420,7 +526,7 @@ export async function consumeHotp(id: string): Promise<boolean> {
 /** 冲突处置：file = 以文件为准；local = 以本地为准（仍按文件抬高 HOTP 下限）。 */
 export async function resolveConflict(choice: "file" | "local"): Promise<void> {
   const conflict = state.conflict;
-  if (!conflict) return;
+  if (!conflict || state.status === "loading" || pendingWrites.has(state.filePath)) return;
   if (choice === "file") {
     const { snapshot, corrected } = mergeExternalSnapshot(conflict.snapshot, state.accounts);
     baseline = { content: conflict.content, stat: conflict.stat };
