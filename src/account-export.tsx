@@ -13,7 +13,7 @@ export function AccountExportAction({ accountId, saved = false }: { accountId: s
 }
 
 function escapeMarkdown(text: string): string {
-  return text.replace(/[\\`*_{}\[\]()<>#+.!|~-]/g, "\\$&").replace(/[\r\n]+/g, " ");
+  return text.replace(/[\\`*_{}[\]()<>#+.!|~-]/g, "\\$&").replace(/[\r\n]+/g, " ");
 }
 
 export default function ExportAccount({ accountId }: { accountId: string }) {
