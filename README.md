@@ -27,4 +27,3 @@ Screenshot scanning hides Raycast before opening the system capture tool, then a
 Both pasted secrets and scanned QR codes use an account form before saving. Review the name, issuer, notes, and TOTP/HOTP settings there. Scanning or opening the form does not create an account; use **Save Account** to add it.
 
 The QR scanner uses macOS Vision through a bundled Swift helper.
-
