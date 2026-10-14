@@ -27,3 +27,7 @@ Screenshot scanning hides Raycast before opening the system capture tool, then a
 Both pasted secrets and scanned QR codes use an account form before saving. Review the name, issuer, notes, and TOTP/HOTP settings there. Scanning or opening the form does not create an account; use **Save Account** to add it.
 
 The QR scanner uses macOS Vision through a bundled Swift helper.
+
+## Local development updates
+
+After validating and pushing a change on `main`, run `bun run update:raycast` (or `npm run update:raycast`) to rebuild and update the installed Goose 2FA extension and, when installed, Screenshot Demo. The command verifies staged builds, backs up both installations, uses Raycast's background build refresh, and checks installed file hashes; if either update fails, it restores the previous files. Backups and the verified source/build record are stored in `~/.cache/goose-2fa/backups/`. The Demo uses current production code with its own fictional accounts. See the [local update workflow](rules/local-update.md).

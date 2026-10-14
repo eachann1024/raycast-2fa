@@ -78,6 +78,7 @@
   "scripts": {
     "build": "ray build -e dist",
     "dev": "ray develop",
+    "update:raycast": "node scripts/update-raycast.mjs",
     "lint": "ray lint",
     "test": "bun test"
   },

@@ -9,6 +9,7 @@
     "tsconfig.json",
     "vendor",
     "swift",
+    "scripts",
     ".github/scripts/stable-release.py",
     ".github/stable-release.json",
     ".github/workflows/daily-stable.yml"
@@ -30,6 +31,8 @@
             "tsconfig.json",
             "vendor",
             "swift",
+            "scripts",
+            "rules/local-update.md",
             "README.md",
             "LICENSE",
             "CHANGELOG.md"
