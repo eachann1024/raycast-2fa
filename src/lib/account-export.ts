@@ -3,7 +3,7 @@ import { exportAsUris } from "../../vendor/lib/data-transfer";
 import type { AccountData } from "../../vendor/lib/types";
 
 export function accountExportHeadingDataUrl(account: AccountData, theme: "light" | "dark"): string {
-  const escapeXml = (text: string) => text.replace(/[\u0000-\u001f]/g, " ").replace(/[&<>"']/g, (character) => ({
+  const escapeXml = (text: string) => Array.from(text).map((character) => character.charCodeAt(0) < 32 ? " " : character).join("").replace(/[&<>"']/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;",
   })[character]!);
   const compact = (text: string, fontSize: number) => {
