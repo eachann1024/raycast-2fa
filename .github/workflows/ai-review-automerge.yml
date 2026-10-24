@@ -22,14 +22,20 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  AUTOMERGE_LABEL: bot-automerge          # Bot 开 PR 时加这个标签才会自动合并
+  AUTOMERGE_LABEL: bot-automerge          # 结论不是 safe_to_merge 时，要有这个标签才自动合并
   BLOCK_LABEL: needs-human                # 不合并时打的标签
   ALLOWED_AUTHORS: eachann1024            # 逗号分隔；只合并这些作者的 PR
   ALLOW_CAUTION: "true"                   # merge_with_caution 不是致命问题，默认放行（用户口径：没有致命问题就合并）
   CHECKS_TIMEOUT_MIN: "20"                # 等其他 CI 的上限，超时不合并
-  # 动到这些路径一律转人工（审核/CI 配置、密钥、部署配置）。规则：以 / 结尾=任意层级目录；以 * 开头=后缀；其他=文件名前缀
+  # 受保护路径。fork、其他作者，或审核结论不是 safe_to_merge 时，命中即转人工（needs-human）。
+  # 仓库主人（ALLOWED_AUTHORS）的同仓库 PR，且结论正好是 safe_to_merge 时：即使命中这些路径也 squash 自动合并，不要求 bot-automerge 标签。
+  # 例外：密钥类路径任何情况下都不自动合并（见 SECRET_PATHS，按路径段匹配，不只看文件名）。
+  # 规则：以 / 结尾=任意层级目录；以 * 开头=后缀；其他=文件名前缀
   # 仓库有其他部署配置（如自定义 deploy 脚本目录）就追加到这里
   PROTECTED_PATHS: ".github/,.pr_agent.toml,.gemini/,.coderabbit.yaml,.greptile/,.env,secrets,credentials,*.pem,*.key,*.p12,id_rsa,deploy/,vercel.json,netlify.toml,fly.toml,wrangler.toml,render.yaml,Dockerfile,docker-compose,compose.yaml,compose.yml,Procfile"
+  # 密钥材料。命中则主人的 safe_to_merge 也转 needs-human。按路径段匹配，不只看文件名：
+  # 任一段等于 secrets 或 credentials（如 .github/secrets/production.json）；任一段以 .env 或 id_rsa 开头；任一段以 .pem/.key/.p12 结尾。
+  SECRET_PATHS: ".env,secrets,credentials,*.pem,*.key,*.p12,id_rsa"
 
 jobs:
   review:
@@ -47,8 +53,6 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
-    outputs:
-      review: ${{ steps.pragent.outputs.review }}
     steps:
       - name: Checkout review script from default branch
         uses: actions/checkout@v4
@@ -56,21 +60,20 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
       - name: Codex review (ChatGPT login)
-        id: pragent
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          json=$(bash .github/codex-review/run.sh)
-          delim=REVIEW_JSON_EOF
-          {
-            echo "review<<$delim"
-            printf '%s\n' "$json"
-            echo "$delim"
-          } >> "$GITHUB_OUTPUT"
+        run: bash .github/codex-review/run.sh > "$RUNNER_TEMP/codex-review.json"
+      - name: Upload review result
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-review
+          path: ${{ runner.temp }}/codex-review.json
+          if-no-files-found: error
+          retention-days: 7
 
 
   validate:
@@ -118,13 +121,23 @@ jobs:
           HEAD_SHA: ${{ steps.target.outputs.sha }}
         run: |
           bash .github/codex-review/run.sh > "$RUNNER_TEMP/validated-review.json"
-          {
-            echo '## Codex 审核验收'
-            echo
-            echo '```json'
-            cat "$RUNNER_TEMP/validated-review.json"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import json, os
+          data = json.load(open(os.environ["RUNNER_TEMP"] + "/validated-review.json", encoding="utf-8"))
+          issues = data.get("key_issues_to_review") or []
+          count = len(issues) if isinstance(issues, list) else 0
+          rec = str(data.get("merge_recommendation", ""))
+          risk = str(data.get("risk_level", ""))
+          summary = (
+              "## Codex 审核验收\n\n"
+              f"- merge_recommendation: {rec}\n"
+              f"- risk_level: {risk}\n"
+              f"- key_issues: {count}\n"
+          )
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+              handle.write(summary)
+          print(f"validation ok recommendation={rec} risk={risk} issues={count}")
+          PY
       - name: Upload review result
         uses: actions/upload-artifact@v4
         with:
@@ -152,6 +165,19 @@ jobs:
       checks: read
       statuses: read
     steps:
+      # 只检出默认分支上的解析脚本。不检出 PR head，fork 代码不会在 pull_request_target 里执行。
+      - name: Checkout trusted gate scripts from default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Download review result
+        id: review-artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-review
+          path: review-artifact
       - name: Decide and merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -159,9 +185,11 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REVIEW_RESULT: ${{ needs.review.result }}
-          REVIEW_JSON: ${{ needs.review.outputs.review }}
+          REVIEW_ARTIFACT: review-artifact/codex-review.json
+          DOWNLOAD_OUTCOME: ${{ steps.review-artifact.outcome }}
         run: |
           python3 - <<'PY'
+          import importlib.util
           import json, os, re, subprocess, sys, time
 
           env = os.environ
@@ -178,7 +206,7 @@ jobs:
           def api(path):
               return json.loads(gh("api", path))
 
-          def short(s, n=120):
+          def short(s, n=240):
               s = " ".join(str(s).split())
               return s if len(s) <= n else s[:n - 1] + "…"
 
@@ -187,7 +215,7 @@ jobs:
                   return "无审核结果"
               return f"{review.get('merge_recommendation', '?')} / 风险 {review.get('risk_level', '?')}"
 
-          def block_merge(reasons):
+          def block_merge(reasons, code=0):
               gh("label", "create", block, "-R", repo, "--color", "B60205",
                  "--description", "AI 闸门判定需要人工处理", check=False)
               gh("api", "-X", "POST", f"repos/{repo}/issues/{pr}/labels", "-f", f"labels[]={block}", check=False)
@@ -199,102 +227,154 @@ jobs:
               body = (f"### 🤖 自动合并已拦截\n结论：{verdict(review)}\n" + "\n".join(lines) +
                       f"\n\n审核提交：`{sha[:7]}`")
               gh("pr", "comment", pr, "-R", repo, "--body", body, check=False)
-              print("BLOCKED:", reasons)
-              sys.exit(0)
+              print("FAILED:" if code else "BLOCKED:", reasons)
+              sys.exit(code)
 
           review = {}
-          try:
-              review = json.loads(env.get("REVIEW_JSON") or "{}") or {}
-          except Exception:
-              review = None
-          # 详细结论只写进 Actions 运行摘要，不发评论
+          artifact_error = None
+          artifact = env.get("REVIEW_ARTIFACT") or "review-artifact/codex-review.json"
+          if not os.path.isfile(artifact):
+              outcome = env.get("DOWNLOAD_OUTCOME") or "unknown"
+              result = env.get("REVIEW_RESULT") or "unknown"
+              artifact_error = (
+                  f"没有找到 AI 审核产物 {os.path.basename(artifact)}"
+                  f"（下载步骤：{outcome}，review job：{result}）。"
+                  "审核 JSON 改为用 artifact 传递，不再读取 job output；"
+                  "产物缺失不能当成空的审核结果。"
+              )
+          else:
+              parser_path = os.path.join(".github", "codex-review", "parse_review.py")
+              if not os.path.isfile(parser_path):
+                  artifact_error = "默认分支上没有 parse_review.py，无法解析审核产物"
+              else:
+                  spec = importlib.util.spec_from_file_location("parse_review", parser_path)
+                  if spec is None or spec.loader is None:
+                      artifact_error = "无法加载 parse_review.py"
+                  else:
+                      mod = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(mod)
+                      try:
+                          review = mod.load_review(artifact)
+                      except mod.ReviewParseError as exc:
+                          artifact_error = str(exc)
+          # 摘要和评论只留结论枚举或解析失败的元数据，不写审核原文。
           try:
               with open(env["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
-                  fh.write("## AI 审核结论\n\n```json\n" +
-                           json.dumps(review, ensure_ascii=False, indent=2)[:60000] + "\n```\n")
+                  if review and not artifact_error:
+                      issue_list = review.get("key_issues_to_review") or []
+                      issue_count = len(issue_list) if isinstance(issue_list, list) else 0
+                      fh.write("## AI 审核结论\n\n"
+                               f"- merge_recommendation: {review.get('merge_recommendation', '')}\n"
+                               f"- risk_level: {review.get('risk_level', '')}\n"
+                               f"- key_issues: {issue_count}\n")
+                  else:
+                      fh.write("## AI 审核结论\n\n" + (artifact_error or "没有审核结果") + "\n")
           except Exception:
               pass
 
           info = api(f"repos/{repo}/pulls/{pr}")
           labels = {l["name"] for l in info["labels"]}
-          # 没有自动合并标签：只审核不合并，什么都不做
-          if label not in labels:
-              print("no automerge label; review only"); sys.exit(0)
           if info["state"] != "open" or info["head"]["sha"] != sha:
               print("PR closed or head moved; a newer run will handle it"); sys.exit(0)
 
-          reasons = []
           allowed = {a.strip() for a in env["ALLOWED_AUTHORS"].split(",") if a.strip()}
           if info["user"]["login"] not in allowed:
               # 不是仓库主人的 PR：只审不合，也不发评论
               print("author not allowed; review only"); sys.exit(0)
+          head_repo = ((info.get("head") or {}).get("repo") or {}).get("full_name") or ""
+          rec = str((review or {}).get("merge_recommendation", "")).strip()
+          # 主人 + 同仓库 + safe_to_merge：不要求 bot-automerge，受保护路径也可合并。fork 走不到这条。
+          owner_safe_path = info["user"]["login"] in allowed and head_repo == repo and rec == "safe_to_merge"
+          if artifact_error:
+              print(artifact_error, file=sys.stderr)
+              if label in labels or owner_safe_path:
+                  block_merge([artifact_error], code=1)
+              sys.exit(1)
+          # 没有自动合并标签：只审核不合并。主人同仓库且结论为 safe_to_merge 时例外。
+          if label not in labels and not owner_safe_path:
+              print("no automerge label; review only"); sys.exit(0)
+          if owner_safe_path and label not in labels:
+              print("owner same-repo safe_to_merge; automerge label not required")
 
+          reasons = []
           # 1) 审核本身必须成功且有结构化结果（超时/报错/无输出 = 不合并）
           if env["REVIEW_RESULT"] != "success":
               reasons.append(f"AI 审核未成功完成（{env['REVIEW_RESULT']}），按规则不自动合并")
-          if review is None:
-              review = {}
-              reasons.append("AI 审核输出无法解析")
-          elif not review:
-              reasons.append("没有拿到 AI 审核的结构化结果")
+          rec = str(review.get("merge_recommendation", "")).strip()
+          risk = str(review.get("risk_level", "")).strip().lower()
+          # Actions 把 PR-Agent YAML 里的 No 编进 output JSON 时会变成布尔 false，不能当安全疑虑
+          sec_raw = review.get("security_concerns", None)
+          if isinstance(sec_raw, bool):
+              sec_text = "true" if sec_raw else "false"
+              sec_clear = not sec_raw
           else:
-              rec = str(review.get("merge_recommendation", "")).strip()
-              risk = str(review.get("risk_level", "")).strip().lower()
-              # Actions 把 PR-Agent YAML 里的 No 编进 output JSON 时会变成布尔 false，不能当安全疑虑
-              sec_raw = review.get("security_concerns", None)
-              if isinstance(sec_raw, bool):
-                  sec_text = "true" if sec_raw else "false"
-                  sec_clear = not sec_raw
-              else:
-                  sec_text = str(sec_raw or "").strip()
-                  low = sec_text.lower()
-                  sec_clear = low.startswith("no") or low in {"false", "none", "null"}
-              ok_recs = {"safe_to_merge"} | ({"merge_with_caution"} if env["ALLOW_CAUTION"] == "true" else set())
-              if rec not in ok_recs:
-                  reasons.append(f"合并建议为 `{rec or '缺失'}`")
-              if risk not in {"low", "medium"}:
-                  reasons.append(f"风险等级为 `{risk or '缺失'}`")
-              if sec_raw is None or (not isinstance(sec_raw, bool) and not sec_text):
-                  reasons.append("安全审查字段缺失")
-              elif not sec_clear:
-                  reasons.append(f"存在安全疑虑：{sec_text[:300]}")
-              # 安全/鉴权/计费/数据/迁移类意见一律转人工
-              issues = review.get("key_issues_to_review") or []
-              if not isinstance(issues, list):
-                  issues = []
-              # 不用裸「安全」：建议里的「并发安全/线程安全」不是安全漏洞
-              fatal_kw = re.compile(
-                  r"安全漏洞|安全隐患|安全问题|安全风险|不安全|安全性|漏洞|注入|泄露|密钥|令牌|凭据|鉴权|认证|授权|越权|权限|计费|扣费|支付|账单|"
-                  r"数据(丢失|损坏|泄露|删除|清空|覆盖)|丢数据|迁移|schema|"
-                  r"\b(security|vulnerab\w*|injection|secret|credential|authn|authz|authenticat\w*|authoriz\w*|"
-                  r"permission|billing|payment|migration|data loss|corrupt\w*)\b", re.I)
-              for it in issues:
-                  if isinstance(it, dict):
-                      text = f"{it.get('issue_header', '')} {it.get('issue_content', '')}"
-                      if fatal_kw.search(text):
-                          reasons.append("审核意见涉及安全/鉴权/计费/数据/迁移：" + str(it.get("issue_header", ""))[:120])
-              if rec == "changes_required":
-                  for it in issues:
-                      if isinstance(it, dict):
-                          reasons.append("要改：" + short(f"{str(it.get('relevant_file', '')).strip()} "
-                                                       f"{str(it.get('issue_header', '')).strip()}：{it.get('issue_content', '')}"))
+              sec_text = str(sec_raw or "").strip()
+              low = sec_text.lower()
+              sec_clear = low.startswith("no") or low in {"false", "none", "null"}
+          ok_recs = {"safe_to_merge"} | ({"merge_with_caution"} if env["ALLOW_CAUTION"] == "true" else set())
+          if rec not in ok_recs:
+              reasons.append(f"合并建议为 `{rec or '缺失'}`")
+          if risk not in {"low", "medium"}:
+              reasons.append(f"风险等级为 `{risk or '缺失'}`")
+          if sec_raw is None or (not isinstance(sec_raw, bool) and not sec_text):
+              reasons.append("安全审查字段缺失")
+          elif not sec_clear:
+              reasons.append("存在安全疑虑")
+          # 安全/鉴权/计费/数据/迁移类意见一律转人工。评论和日志不写意见原文。
+          issues = review.get("key_issues_to_review") or []
+          if not isinstance(issues, list):
+              issues = []
+          # 不用裸「安全」：建议里的「并发安全/线程安全」不是安全漏洞
+          fatal_kw = re.compile(
+              r"安全漏洞|安全隐患|安全问题|安全风险|不安全|安全性|漏洞|注入|泄露|密钥|令牌|凭据|鉴权|认证|授权|越权|权限|计费|扣费|支付|账单|"
+              r"数据(丢失|损坏|泄露|删除|清空|覆盖)|丢数据|迁移|schema|"
+              r"\b(security|vulnerab\w*|injection|secret|credential|authn|authz|authenticat\w*|authoriz\w*|"
+              r"permission|billing|payment|migration|data loss|corrupt\w*)\b", re.I)
+          fatal = False
+          for it in issues:
+              if isinstance(it, dict):
+                  text = f"{it.get('issue_header', '')} {it.get('issue_content', '')}"
+                  if fatal_kw.search(text):
+                      fatal = True
+          if fatal:
+              reasons.append("审核意见涉及安全/鉴权/计费/数据/迁移")
+          if rec == "changes_required":
+              reasons.append(f"要改：{len(issues)} 条")
           if any("security" in l.lower() for l in labels):
               reasons.append("PR 带有安全疑虑标签")
 
-          # 2) 敏感路径转人工
+          # 2) 敏感路径转人工。主人同仓库且 safe_to_merge 时，只拦截密钥路径。
           files = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repo}/pulls/{pr}/files?per_page=100"))
           names = [f["filename"] for page in files for f in page]
           prot = [p.strip() for p in env["PROTECTED_PATHS"].split(",") if p.strip()]
-          def protected(n, p):
+          secret_patterns = [p.strip() for p in env.get("SECRET_PATHS", "").split(",") if p.strip()]
+          def path_match(n, p):
               base = n.rsplit("/", 1)[-1]
               if p.endswith("/"):
                   return ("/" + n).find("/" + p) >= 0
               if p.startswith("*"):
                   return n.endswith(p[1:])
               return base.startswith(p)
-          hit = [n for n in names if any(protected(n, p) for p in prot)]
-          if hit:
-              reasons.append("改动了受保护路径：" + ", ".join(hit[:10]))
+          def secret_match(n, p):
+              # 按路径段匹配，不只看文件名。secrets/credentials 必须整段相等。
+              parts = [part for part in n.split("/") if part not in {"", ".", ".."}]
+              if p.startswith("*"):
+                  suffix = p[1:]
+                  return any(part.endswith(suffix) for part in parts)
+              if p.endswith("/"):
+                  return ("/" + n).find("/" + p) >= 0
+              if p in {".env", "id_rsa"} or p.startswith(".env") or p.startswith("id_rsa"):
+                  return any(part.startswith(p) for part in parts)
+              return any(part == p for part in parts)
+          prot_hit = [n for n in names if any(path_match(n, p) for p in prot)]
+          secret_hit = [n for n in names if any(secret_match(n, p) for p in secret_patterns)]
+          if owner_safe_path:
+              if secret_hit:
+                  reasons.append("改动了密钥相关路径：" + ", ".join(secret_hit[:10]))
+              elif prot_hit:
+                  print("owner safe_to_merge; protected paths allowed:", ", ".join(prot_hit[:10]))
+          elif prot_hit:
+              reasons.append("改动了受保护路径：" + ", ".join(prot_hit[:10]))
 
           if reasons:
               block_merge(reasons)
