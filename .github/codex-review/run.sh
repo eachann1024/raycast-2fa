@@ -71,32 +71,19 @@ PROMPT
 } >> "$prompt_file"
 
 out="${RUNNER_TEMP}/review.json"
-env -u GH_TOKEN -u GITHUB_TOKEN -u CODEX_AUTH_JSON CODEX_HOME="$review_codex_home" codex exec \
+codex_log="${RUNNER_TEMP}/codex-exec.log"
+# 模型输出留在临时日志里，不进 Actions 日志、摘要或评论。
+if ! env -u GH_TOKEN -u GITHUB_TOKEN -u CODEX_AUTH_JSON CODEX_HOME="$review_codex_home" codex exec \
   --ephemeral \
   --disable shell_tool \
   --skip-git-repo-check \
   -s read-only \
   --output-schema .github/codex-review/schema.json \
   -o "$out" \
-  - < "$prompt_file" >&2
+  - < "$prompt_file" >"$codex_log" 2>&1; then
+  echo "Codex 审核进程失败，已丢弃模型输出。" >&2
+  exit 1
+fi
 
-python3 - "$out" <<'PARSE'
-import json, sys
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-needed = {"merge_recommendation", "risk_level", "security_concerns", "key_issues_to_review"}
-if not isinstance(data, dict) or set(data) != needed:
-    raise SystemExit("审核结果字段不合法")
-if data["merge_recommendation"] not in {"safe_to_merge", "merge_with_caution", "changes_required"}:
-    raise SystemExit("审核建议不合法")
-if data["risk_level"] not in {"low", "medium", "high"} or not isinstance(data["security_concerns"], str):
-    raise SystemExit("审核风险或安全字段不合法")
-issues = data["key_issues_to_review"]
-keys = {"relevant_file", "issue_header", "issue_content"}
-if not isinstance(issues, list) or len(issues) > 3 or any(
-    not isinstance(issue, dict) or set(issue) != keys or any(not isinstance(value, str) for value in issue.values())
-    for issue in issues
-):
-    raise SystemExit("审核问题字段不合法")
-json.dump(data, sys.stdout, ensure_ascii=False)
-print()
-PARSE
+# 取最后一个带 merge_recommendation 的完整 JSON，忽略前后多余对象或尾部文本。
+python3 .github/codex-review/parse_review.py "$out"
