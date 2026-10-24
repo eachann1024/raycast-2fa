@@ -344,8 +344,15 @@ jobs:
               reasons.append("PR 带有安全疑虑标签")
 
           # 2) 敏感路径转人工。主人同仓库且 safe_to_merge 时，只拦截密钥路径。
+          # 删除的文件看 filename。重命名同时看新路径和 previous_filename：
+          # 从密钥/受保护路径改出去，或改进来，都算命中。
           files = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repo}/pulls/{pr}/files?per_page=100"))
-          names = [f["filename"] for page in files for f in page]
+          names = []
+          for entry in (item for page in files for item in page):
+              for key in ("filename", "previous_filename"):
+                  path = str(entry.get(key) or "").strip()
+                  if path and path not in names:
+                      names.append(path)
           prot = [p.strip() for p in env["PROTECTED_PATHS"].split(",") if p.strip()]
           secret_patterns = [p.strip() for p in env.get("SECRET_PATHS", "").split(",") if p.strip()]
           def path_match(n, p):
